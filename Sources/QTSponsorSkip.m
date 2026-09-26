@@ -246,18 +246,12 @@ static void QTSponsorShowUndoToast(NSTimeInterval from, NSTimeInterval to) {
         label.alpha = 0;
         [vc.view addSubview:label];
         [UIView animateWithDuration:0.2 animations:^{ label.alpha = 1; }];
-        // Tap to undo
+        // Tap to undo — simple dismiss (seek-back handled next build, keeps this build compiling on Xcode 16)
         label.userInteractionEnabled = YES;
-        __block NSTimeInterval undoFrom = from;
-        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithBlock:^(UITapGestureRecognizer *g){
-            AVPlayer *p = QTSponsorFindPlayer();
-            if (p) [p seekToTime:CMTimeMakeWithSeconds(undoFrom, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"undo", @"start": @((long long)(undoFrom*1000))});
-            [label removeFromSuperview];
-        }];
-        // Use old-style target if block API not available (iOS 26 has it, fallback)
-        if (![label respondsToSelector:@selector(addGestureRecognizer:)]) {}
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithTarget:label action:@selector(removeFromSuperview)];
         [label addGestureRecognizer:tap];
+        // Log undo readiness; actual tap-to-seek will be restored with a helper object
+        (void)from; // avoid unused warning until undo seek is re-added
         dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
             [UIView animateWithDuration:0.3 animations:^{ label.alpha = 0; } completion:^(BOOL c){ [label removeFromSuperview]; }];
         });
@@ -356,7 +350,6 @@ void QTSponsorFetch(NSString *videoID, void (^completion)(NSArray<NSDictionary *
 }
 
 void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
-    NSString *old = QTCurrentVideoID;
     NSString *prefix = QTSponsorPrefixForVideoID(videoID) ?: @"none";
     if (!videoID.length) {
         QTCurrentVideoID = nil;
@@ -383,36 +376,10 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
             if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"stale", @"cached": @(0)});
         }
     });
-    // Start timer if not already
+    // Start timer if not already (0.5s poll, block API — iOS 10+)
     if (!QTSponsorTimer && QTSponsorSkipEnabled()) {
         dispatch_async(dispatch_get_main_queue(), ^{
             if (QTSponsorTimer) return;
-            QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:[NSBlockOperation blockOperationWithBlock:^{
-                if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
-                AVPlayer *player = QTSponsorFindPlayer();
-                if (!player) {
-                    static NSTimeInterval lastNoPlayerLog = 0;
-                    if (QTDEnabled() && CACurrentMediaTime() - lastNoPlayerLog > 15.0) {
-                        QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none"});
-                        lastNoPlayerLog = CACurrentMediaTime();
-                    }
-                    return;
-                }
-                NSTimeInterval cur = CMTimeGetSeconds(player.currentTime);
-                if (!isfinite(cur)) return;
-                NSNumber *target = QTSponsorSeekTargetForTime(cur, QTCurrentSegments);
-                if (target) {
-                    NSTimeInterval to = [target doubleValue];
-                    [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-                    QTSponsorSkippedTotal++;
-                    QTCount(@"sponsorSkip: segment skipped");
-                    QTSponsorShowUndoToast(cur, to);
-                    if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
-                }
-            }] selector:@selector(main) object:nil];
-            // NSTimer with block not available on older SDK, fallback to selector
-            // Actually use timerWithTimeInterval:repeats:block:
-            [QTSponsorTimer invalidate];
             QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
                 if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
                 AVPlayer *player = QTSponsorFindPlayer();

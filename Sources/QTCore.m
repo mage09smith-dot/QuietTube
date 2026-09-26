@@ -63,12 +63,25 @@ NSArray<NSDictionary *> *QTOptions(void) {
 }
 
 static BOOL QTIsExpBuild(void) {
+    // FIX: YouTube's CFBundleShortVersionString is 21.38.2, so checking mainBundle always returned NO for exp builds.
+    // Check the compiled QuietTube version first — this string is replaced at build time and contains "exp" for test builds.
+    NSString *compiled = @"1.3.0-exp.16";
+    if ([compiled containsString:@"exp"]) return YES;
     NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
-    if (!ver) ver = (NSString *)[[NSString alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"VERSION" ofType:nil] encoding:NSUTF8StringEncoding error:nil];
-    if (!ver) ver = [[NSString alloc] initWithContentsOfFile:[@"/var/containers/Bundle/Application/QuietTube/VERSION" stringByExpandingTildeInPath] encoding:NSUTF8StringEncoding error:nil];
-    // Fallback: read VERSION from app's resource or hardcode for exp builds
-    if (!ver) ver = @"1.3.0-exp.15";
-    return [ver containsString:@"exp"];
+    if (ver && [ver containsString:@"exp"]) return YES;
+    // Also try reading our VERSION file from the dylib's bundle (covers sideloaded layout)
+    NSString *vPath = nil;
+    @try {
+        NSBundle *b = [NSBundle bundleForClass:NSClassFromString(@"QTSettings")];
+        if (!b) b = [NSBundle mainBundle];
+        vPath = [b pathForResource:@"VERSION" ofType:nil];
+        if (!vPath) vPath = [[NSBundle mainBundle].bundlePath stringByAppendingPathComponent:@"VERSION"];
+    } @catch (__unused NSException *e) {}
+    if (vPath) {
+        NSString *fileVer = [NSString stringWithContentsOfFile:vPath encoding:NSUTF8StringEncoding error:nil];
+        if (fileVer && [fileVer containsString:@"exp"]) return YES;
+    }
+    return NO;
 }
 void QTRegisterDefaults(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
@@ -79,7 +92,7 @@ void QTRegisterDefaults(void) {
     if (isExp) {
         // Testing exp.12: force ALL tweaks ON + SponsorSkip master ON + logging ON for easy testing
         // Do a one-time migration for existing installs where they were OFF (see your exp.11 log: autoplay/background off, sponsorSkip off)
-        NSString *migratedKey = @"QuietTube.v1.exp15.migrated";
+        NSString *migratedKey = @"QuietTube.v1.exp16.migrated";
         BOOL alreadyMigrated = [d boolForKey:migratedKey];
         if (!alreadyMigrated) {
             for (NSDictionary *o in QTOptions()) {

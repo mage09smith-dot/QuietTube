@@ -187,6 +187,101 @@ void QTSponsorCacheClear(void) {
 }
 
 // Find active AVPlayer by traversing view hierarchy and checking AVPlayerLayer
+static NSString *QTSponsorExtractVideoID(void) {
+    // Robust extractor: traverses windows/viewControllers and KVC for 11-char videoIDs
+    NSArray<UIWindow *> *windows = nil;
+    if (@available(iOS 15.0, *)) {
+        NSMutableArray *all = [NSMutableArray array];
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *ws = (UIWindowScene *)scene;
+                [all addObjectsFromArray:ws.windows];
+            }
+        }
+        windows = all.count ? all : [UIApplication sharedApplication].windows;
+    } else {
+        windows = [UIApplication sharedApplication].windows;
+    }
+    for (UIWindow *window in windows) {
+        NSMutableArray *queue = [NSMutableArray array];
+        if (window.rootViewController) [queue addObject:window.rootViewController];
+        // Also add window itself for KVC
+        NSMutableArray *seen = [NSMutableArray array];
+        while (queue.count) {
+            id obj = queue.firstObject; [queue removeObjectAtIndex:0];
+            if ([seen containsObject:obj]) continue;
+            [seen addObject:obj];
+            // Try direct KVC for videoId
+            for (NSString *k in @[@"videoId", @"videoID", @"currentVideoId", @"currentVideoID", @"videoIdentifier", @"watchVideoId"]) {
+                @try {
+                    id v = [obj valueForKey:k];
+                    if ([v isKindOfClass:NSString.class] && [(NSString*)v length]==11) {
+                        // Basic charset check
+                        NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"];
+                        if ([[(NSString*)v stringByTrimmingCharactersInSet:allowed] length]==0) return v;
+                    }
+                } @catch (__unused NSException *e) {}
+            }
+            // Try playerResponse.videoId
+            @try {
+                id pr = [obj valueForKey:@"playerResponse"];
+                if (pr) {
+                    for (NSString *k in @[@"videoId", @"videoID"]) {
+                        @try {
+                            id v = [pr valueForKey:k];
+                            if ([v isKindOfClass:NSString.class] && [(NSString*)v length]==11) return v;
+                        } @catch (__unused NSException *e) {}
+                    }
+                    // Try videoDetails.videoId
+                    @try {
+                        id vd = [pr valueForKey:@"videoDetails"];
+                        if (vd) {
+                            id v = [vd valueForKey:@"videoId"] ?: [vd valueForKey:@"videoID"];
+                            if ([v isKindOfClass:NSString.class] && [(NSString*)v length]==11) return v;
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+            } @catch (__unused NSException *e) {}
+            // Try watchNextResponse
+            @try {
+                id wnr = [obj valueForKey:@"watchNextResponse"];
+                if (wnr) {
+                    id v = [wnr valueForKey:@"videoId"] ?: [wnr valueForKey:@"videoID"];
+                    if ([v isKindOfClass:NSString.class] && [(NSString*)v length]==11) return v;
+                }
+            } @catch (__unused NSException *e) {}
+            // Queue children
+            if ([obj isKindOfClass:[UIViewController class]]) {
+                UIViewController *vc = (UIViewController *)obj;
+                if (vc.presentedViewController) [queue addObject:vc.presentedViewController];
+                for (UIViewController *child in vc.childViewControllers) [queue addObject:child];
+                if (vc.view) [queue addObject:vc.view];
+            } else if ([obj isKindOfClass:[UIView class]]) {
+                UIView *v = (UIView *)obj;
+                for (UIView *sub in v.subviews) [queue addObject:sub];
+                // Try view's nextResponder which is often viewController
+                UIResponder *next = v.nextResponder;
+                if ([next isKindOfClass:[UIViewController class]] && ![seen containsObject:next]) [queue addObject:next];
+            }
+            if (queue.count > 500) break; // prevent explosion
+        }
+    }
+    // Fallback: try GIMMe singleton (YouTube's DI)
+    @try {
+        Class gimme = NSClassFromString(@"GIMMe");
+        if (gimme) {
+            id instance = [gimme valueForKey:@"sharedInstance"] ?: [gimme performSelector:NSSelectorFromString(@"sharedGIMMe")];
+            if (!instance) instance = [gimme performSelector:NSSelectorFromString(@"sharedInstance")];
+            if (instance) {
+                // Try to resolve YTAppWatchController via GIMMe
+                // This is heuristic: look for any object with videoId
+                // We brute force by checking all properties via KVC?
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    return nil;
+}
+
 static AVPlayer *QTSponsorFindPlayer(void) {
     // Try to find via shared application windows
     // iOS 15+ scene-aware window lookup (falls back to deprecated windows for older)
@@ -551,6 +646,61 @@ void QTSponsorInstall(void) {
         NSString *vid = n.userInfo[@"videoId"] ?: n.userInfo[@"videoID"];
         if (vid.length) QTSponsorNotifyVideoIDChanged(vid);
     }];
+    // Fallback polling for videoID (robust for 21.38.2 where YTPlayerViewController hook is unavailable)
+    // This ensures SponsorSkip works even if no hook fires — diagnostics will show fetch/skip
+    dispatch_async(dispatch_get_main_queue(), ^{
+        static NSTimer *videoPoll = nil;
+        if (videoPoll) return;
+        // Log that we installed polling
+        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": @"poll", @"result": @"installed", @"cached": @(1)});
+        videoPoll = [NSTimer scheduledTimerWithTimeInterval:1.5 repeats:YES block:^(NSTimer *t){
+            if (!QTSponsorSkipEnabled()) {
+                // Still poll but don't notify when disabled — helps log disabled state
+                return;
+            }
+            NSString *found = QTSponsorExtractVideoID();
+            if (found.length && ![found isEqualToString:QTCurrentVideoID]) {
+                if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(found) ?: @"none", @"result": @"poll_found", @"cached": @(0)});
+                QTSponsorNotifyVideoIDChanged(found);
+            } else if (!found.length) {
+                static NSTimeInterval lastNoID = 0;
+                if (QTDEnabled() && CACurrentMediaTime() - lastNoID > 20.0) {
+                    QTDEvent(QTDESponsorFetch, @{@"prefix": @"none", @"result": @"poll_none", @"cached": @(0)});
+                    lastNoID = CACurrentMediaTime();
+                }
+            }
+            // Also try to update green marks if we have segments but scrubber not yet found
+            if (QTCurrentSegments.count) {
+                // Re-attempt green marks periodically (scrubber may appear after layout)
+                static NSTimeInterval lastGreen = 0;
+                if (CACurrentMediaTime() - lastGreen > 5.0) {
+                    lastGreen = CACurrentMediaTime();
+                    QTSponsorUpdateGreenMarks(QTCurrentSegments);
+                }
+            }
+        }];
+        // Fire immediately once
+        NSString *found = QTSponsorExtractVideoID();
+        if (found.length) QTSponsorNotifyVideoIDChanged(found);
+    });
+    // Also hook additional available classes for videoID — try YTAppWatchControllerImpl if selectors exist
+    Class watchImpl = NSClassFromString(@"YTAppWatchControllerImpl");
+    if (watchImpl) {
+        // Try common watch selectors that carry videoId
+        for (NSString *selStr in @[@"watchWithVideoId:", @"openWatchWithVideoId:", @"navigateToWatchWithVideoId:"]) {
+            SEL sel = NSSelectorFromString(selStr);
+            Method m = class_getInstanceMethod(watchImpl, sel);
+            if (m) {
+                QTHook(@"YTAppWatchControllerImpl", selStr, @"v@:@", ^id(IMP old, SEL s){
+                    return ^(id obj, NSString *vid){
+                        ((void (*)(id,SEL,id))old)(obj, s, vid);
+                        if (vid.length==11) QTSponsorNotifyVideoIDChanged(vid);
+                        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": vid.length==11 ? (QTSponsorPrefixForVideoID(vid) ?: @"none") : @"none", @"result": @"watch_impl", @"cached": @(0)});
+                    };
+                });
+            }
+        }
+    }
 }
 
 NSString *QTSponsorReport(void) {

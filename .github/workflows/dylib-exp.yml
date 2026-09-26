@@ -18,7 +18,7 @@ permissions:
 jobs:
   build:
     name: Build EXPERIMENTAL dylib
-    if: ${{ (github.ref == 'refs/heads/Experimental' || github.ref == 'refs/heads/exp/sponsorskip' || startsWith(github.ref, 'refs/heads/exp/')) && (github.repository == 'KalvinWasUnoticed/QuietTube' || github.event.repository.fork == true) && inputs.acknowledge_rights == true }}
+    if: ${{ (github.repository == 'KalvinWasUnoticed/QuietTube' || github.event.repository.fork == true) && inputs.acknowledge_rights == true }}
     runs-on: macos-15
     timeout-minutes: 25
     permissions:

@@ -62,6 +62,14 @@ Queue/rate drops are counted. An absent event can mean the master was off, an un
 
 Sampling still runs at the native callback and has a cost. Keep the master on only when you are actively investigating; turn it off when you don't need logs.
 
+## SponsorSkip in diagnostics
+
+SponsorSkip is off by default and does not write to the diagnostic log unless Enhanced logging is also on.
+
+When both are on, the log includes `sponsorSkip: segment skipped` + category (`sponsor` / `intro` / `outro` / `selfpromo`) and the seek target. The support snapshot (`Export logs` → diagnostics) also appends `QTSponsorReport()` — master/children state, total skipped, cache size — so you can see if a jump was from SponsorSkip or from YouTube.
+
+SponsorSkip cache itself (`Library/Caches/QuietTube/SponsorSkip`) is not part of the diagnostic export; it holds only hashed lookups (prefix → segments) for 7 days.
+
 ## What collecting does not change
 
 Observation does not seek, retry playback, edit feed objects, suppress native exceptions or alter saved choices. Turning the master on retries the existing idempotent installers with the same launch flags (no extra restart needed). The supported-version guard still applies. Turning it off leaves installed observation wrappers in place, but the recorder stops accepting events.

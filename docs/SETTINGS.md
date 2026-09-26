@@ -58,7 +58,22 @@ Limits worth knowing:
 
 **Troubleshooting** now has only three rows: **Enhanced logging** (single master switch), **Export logs** and **Clear logs**. When the master is on, it captures daily feed/player clues locally (3 × 256 KiB, 7-day, no upload) — the old `Record feed activity` / `Record template clues` and `Prepare a support test` are merged into it and auto-resume after relaunch until you turn it off. [What each logging control does](DIAGNOSTICS.md).
 
-**Disable all options** asks for confirmation, then saves all toggles off for the next launch, including the enhanced logger. It does not delete your account or history. To stop collecting immediately, toggle **Enhanced logging** off.
+**Disable all options** asks for confirmation, then saves all toggles off for the next launch, including the enhanced logger and SponsorSkip. It does not delete your account or history. To stop collecting immediately, toggle **Enhanced logging** off.
+
+## SponsorSkip — experimental, off by default
+
+**You → Settings → General → Quiet controls → SponsorSkip**
+
+This is separate from YouTube ads. SponsorSkip uses community data from [SponsorBlock](https://sponsor.ajay.app) to skip *creator-placed* sponsorships inside videos.
+
+| Control | What it does |
+| --- | --- |
+| **SponsorSkip** | Master. Off by default. When on, auto-skips `sponsor` segments. Hash-private: only 4-char prefix leaves device. Shows 3s Undo. |
+| **Also skip Intro / Outro** | Also skip `intro` and `outro` when master is on. Disabled until master is on. |
+| **Also skip Self-promo** | Also skip unpaid `selfpromo` when master is on. Disabled until master is on. |
+| **⚠️ Community data — not always correct** | Always visible, not a toggle. Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as `sponsor`. This has been abused to censor content. If a video jumps oddly, turn SponsorSkip off and replay. Review/vote at `sponsor.ajay.app`. |
+
+SponsorSkip takes effect on the **next video**, no restart needed. Master off = no network, no cache, no skipping. Turning master off also turns children off. Presets do not enable SponsorSkip.
 
 ## Saved choices
 

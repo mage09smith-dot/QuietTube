@@ -8,10 +8,11 @@
 - **[YouTube-X](https://github.com/PoomSmart/YouTube-X)** — MIT, copyright 2022–2026 PoomSmart. Reviewed commit `48b901532f9e12152684f3326d4250efcdea61e5`. Explicit ad-renderer metadata and selected element families informed research. The early response-array experiments are not active player hooks here. License: `YouTube-X-MIT.txt`.
 - **[YouPiP](https://github.com/PoomSmart/YouPiP)** — MIT, copyright 2018–2020 SpicaT and 2020–2026 PoomSmart. Its native PiP eligibility work was researched; its player/bootstrap/overlay implementation is not bundled. QuietTube uses YouTube’s native PiP setting. License: `YouPiP-LICENSE.txt`.
 - **[Morphe patches](https://github.com/MorpheApp/morphe-patches)** — consulted for cross-platform identifiers related to chips, portrait/Shorts layouts and radio-playlist destinations, including [Mix PR 1835](https://github.com/MorpheApp/morphe-patches/pull/1835). No Android patch implementation/library is bundled. Those observations alone do not identify an iOS renderer.
+- **[SponsorBlock](https://github.com/ajayyy/SponsorBlock)** — AGPL-3.0, copyright Ajay Ramachandran and contributors. QuietTube includes **no SponsorBlock source** — it calls the public SponsorBlock API (`sponsor.ajay.app/api/skipSegments`) as a separate service. Segment data is submitted and voted on by viewers, not by SponsorBlock or QuietTube, and is licensed under [CC BY-NC-SA 4.0](https://sponsor.ajay.app/privacy). SponsorBlock is independent and does not endorse QuietTube. If you distribute SponsorBlock's own code, you must comply with AGPL-3.0.
 
 The player constructor and scoped feed-insertion boundaries were also inspected in the exact supported native binary. Tests retain the active API metadata, not the app binary, raw payloads or disassembly. Inspection does not grant redistribution rights to that app.
 
-YTPlaybackFix was reviewed for comparison. Its client-rewriting, retry and network implementation is not included. No YouMod GPL implementation is included. A project appearing in this list does not mean its features or licensing permissions transfer here.
+YTPlaybackFix was reviewed for comparison. Its client-rewriting, retry and network implementation is not included. No YouMod GPL implementation is included. No SponsorBlock GPL code is bundled — only network calls to its API. A project appearing in this list does not mean its features or licensing permissions transfer here.
 
 ## Presentation
 

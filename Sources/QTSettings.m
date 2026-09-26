@@ -2,6 +2,7 @@
 #import "QTDiagnosticLog.h"
 #import "QTDiagnosticsBridge.h"
 #import "QTSettingsModel.h"
+#import "QTSponsorSkip.h"
 
 @interface QTOptionsController : UITableViewController
 @property(nonatomic, copy) NSString *group;
@@ -36,6 +37,7 @@
         @{@"title":@"Ads",@"page":@"Ads",@"icon":@"hand.raised"},
         @{@"title":@"Feed",@"page":@"Feed",@"icon":@"rectangle.grid.1x2"},
         @{@"title":@"Playback",@"page":@"Playback",@"icon":@"play.circle"},
+        @{@"title":@"SponsorSkip",@"page":@"SponsorSkip",@"icon":@"scissors",@"note":@"Skip sponsor segments via community data. Off by default."},
         @{@"title":@"Appearance",@"page":@"Appearance",@"icon":@"paintbrush"},
         @{@"title":@"Advanced",@"page":@"Advanced",@"icon":@"gearshape"}];
     else if ([self.group isEqualToString:@"Presets"]) self.rows=@[
@@ -54,6 +56,15 @@
                 @{@"title":@"Export logs",@"action":@"exportDiagnostics",@"note":@"Share the last 3 sessions + current support snapshot. Review before sharing. Files are in app cache; iOS can purge them."},
                 @{@"title":@"Clear logs",@"action":@"clearDiagnostics",@"note":@"Deletes local log files. Does not turn off the master switch."}]];
         }
+        if ([self.group isEqualToString:@"SponsorSkip"]) {
+            // SponsorSkip: master (sponsor) + 2 children + clear disclaimer (pin to top of controls)
+            rows=[NSMutableArray arrayWithArray:@[
+                @{@"title":@"SponsorSkip",@"key":@"sponsorSkip",@"note":@"Off by default. When on, auto-skips sponsor segments. Hash-private: only 4-char prefix leaves device (sponsor.ajay.app). Shows 3s Undo."},
+                @{@"title":@"Also skip Intro / Outro",@"key":@"sponsorSkipIntroOutro",@"note":@"Also skip intro and outro when SponsorSkip is on."},
+                @{@"title":@"Also skip Self-promo",@"key":@"sponsorSkipSelfPromo",@"note":@"Also skip unpaid self-promotion when SponsorSkip is on."},
+                @{@"title":@"⚠️ Community data — not always correct",@"note":@"Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as 'sponsor'. This has been abused to censor content you might want to see. If a video jumps or cuts content, turn SponsorSkip off and replay. You can review and vote on segments at sponsor.ajay.app. SponsorSkip is off by default for this reason.",@"readOnly":@YES}
+            ]];
+        }
         self.rows=rows;
     }
 }
@@ -68,7 +79,7 @@
     if (QTEnhancedEnabled() || QTDEnabled()) state=[state stringByAppendingString:@"\n● Enhanced logging: collecting locally (3 × 256 KiB, 7-day, no upload). Tap the row in Troubleshooting to stop."];
     else state=[state stringByAppendingString:@"\n○ Enhanced logging off. Turn it on in Troubleshooting to capture daily feed/player clues."];
     if (QTAdProfilePaused()) state=[state stringByAppendingString:@"\nAd protection paused this session after a playback error. Your saved choice is unchanged. Reopen the app to retry."];
-    return [NSString stringWithFormat:@"%@\n%@\n1.2.0 · Unofficial, not affiliated with YouTube. Use YouTube’s own Picture in Picture setting.",state,QTSavedSetting(@"enabled")?@"":@"QuietTube is disabled for the next launch. Enable the master switch to use these options."];
+    return [NSString stringWithFormat:@"%@\n%@\n1.3.0-exp.3 · Unofficial, not affiliated with YouTube. Use YouTube’s own Picture in Picture setting.",state,QTSavedSetting(@"enabled")?@"":@"QuietTube is disabled for the next launch. Enable the master switch to use these options."];
 }
 - (void)toggleEnhancedLogging:(UISwitch *)sender {
     BOOL wantOn = sender.on;
@@ -113,11 +124,20 @@
         UISwitch *toggle=[UISwitch new]; toggle.accessibilityIdentifier=key;
         toggle.accessibilityLabel=row[@"title"]; toggle.accessibilityHint=row[@"note"];
         toggle.on=QTSavedSetting(key);
-        // Keep controls usable: enabling an option saves its prerequisites too.
-        NSDictionary *required=QTSettingChanges(key,YES);
-        BOOL missing=NO;
-        for (NSString *dependency in required) if (![dependency isEqualToString:key] && !QTSavedSetting(dependency)) missing=YES;
-        if (missing) cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ %@",row[@"note"] ?: @"",toggle.on?@"Paused: a required option is off. Toggle off and on to restore it.":@"Required matching options will also be enabled."];
+        // SponsorSkip children require master
+        BOOL isSponsorChild = [key isEqualToString:@"sponsorSkipIntroOutro"] || [key isEqualToString:@"sponsorSkipSelfPromo"];
+        if (isSponsorChild && !QTSavedSetting(@"sponsorSkip")) {
+            toggle.enabled = NO;
+            toggle.on = NO;
+            cell.textLabel.enabled = NO;
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ — Enable SponsorSkip first.", row[@"note"] ?: @""];
+        } else {
+            // Keep controls usable: enabling an option saves its prerequisites too.
+            NSDictionary *required=QTSettingChanges(key,YES);
+            BOOL missing=NO;
+            for (NSString *dependency in required) if (![dependency isEqualToString:key] && !QTSavedSetting(dependency)) missing=YES;
+            if (missing) cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ %@",row[@"note"] ?: @"",toggle.on?@"Paused: a required option is off. Toggle off and on to restore it.":@"Required matching options will also be enabled."];
+        }
         [toggle addTarget:self action:@selector(changed:) forControlEvents:UIControlEventValueChanged];
         cell.accessoryView=toggle; cell.selectionStyle=UITableViewCellSelectionStyleNone;
     } else if (![row[@"readOnly"] boolValue]) cell.accessoryType=UITableViewCellAccessoryDisclosureIndicator;
@@ -136,7 +156,24 @@
     // Footer persists if changes still differ from the launch snapshot.
 }
 - (void)changed:(UISwitch *)sender {
-    QTSaveSettings(QTSettingChanges(sender.accessibilityIdentifier,sender.on));
+    NSString *key = sender.accessibilityIdentifier;
+    BOOL on = sender.on;
+    // SponsorSkip dependency: children require master
+    if ([key isEqualToString:@"sponsorSkipIntroOutro"] || [key isEqualToString:@"sponsorSkipSelfPromo"]) {
+        if (on && !QTSavedSetting(@"sponsorSkip")) {
+            sender.on = NO;
+            [self showNotice:@"Enable SponsorSkip first"];
+            [self.tableView reloadData];
+            return;
+        }
+    }
+    NSMutableDictionary *changes = [QTSettingChanges(key, on) mutableCopy];
+    if ([key isEqualToString:@"sponsorSkip"] && !on) {
+        // Master off -> also turn off children
+        changes[@"sponsorSkipIntroOutro"] = @NO;
+        changes[@"sponsorSkipSelfPromo"] = @NO;
+    }
+    QTSaveSettings(changes);
     [self.tableView reloadData];
     [self showNotice:QTSettingsPendingRestart()?@"Saved · Restart to apply":@"Saved · No restart pending"];
 }
@@ -203,7 +240,7 @@
             share.popoverPresentationController.sourceRect=CGRectMake(CGRectGetMidX(page.view.bounds),CGRectGetMidY(page.view.bounds),1,1);
             [page presentViewController:share animated:YES completion:nil];
         }); });
-    } else if ([row[@"action"] isEqualToString:@"about"]) [self showText:@"QuietTube 1.2.0\n\nAn unofficial customization for YouTube 21.38.2 on iOS. Not affiliated with or endorsed by YouTube or Google.\n\nAd protection was tested in limited sessions on one device. It is not guaranteed across all videos or future app updates. The enhanced logger captures during daily use when its master is on. Earlier builds were tested on iPhone 14, iOS 26.5 and LiveContainer 3.8.0. Other environments may behave differently.\n\nQuietTube adds no automatic diagnostic upload. Reports can contain internal class/template identifiers; review before sharing. YouTube and your installation tools have their own data practices.\n\nThe QuietTube source is MIT licensed; see LICENSE and Notices in the source distribution. That license does not grant rights to redistribute YouTube or its trademarks.\n\nTo pause modifications, turn off Enable QuietTube and fully close and reopen the app. Your preferences are retained. Restore your previous IPA if needed." title:@"About QuietTube"];
+    } else if ([row[@"action"] isEqualToString:@"about"]) [self showText:@"QuietTube 1.3.0-exp.3\n\nAn unofficial customization for YouTube 21.38.2 on iOS. Not affiliated with or endorsed by YouTube or Google.\n\nAd protection was tested in limited sessions on one device. It is not guaranteed across all videos or future app updates. The enhanced logger captures during daily use when its master is on. Earlier builds were tested on iPhone 14, iOS 26.5 and LiveContainer 3.8.0. Other environments may behave differently.\n\nQuietTube adds no automatic diagnostic upload. Reports can contain internal class/template identifiers; review before sharing. YouTube and your installation tools have their own data practices.\n\nThe QuietTube source is MIT licensed; see LICENSE and Notices in the source distribution. That license does not grant rights to redistribute YouTube or its trademarks.\n\nTo pause modifications, turn off Enable QuietTube and fully close and reopen the app. Your preferences are retained. Restore your previous IPA if needed." title:@"About QuietTube"];
     else if ([row[@"action"] isEqualToString:@"reset"]) {
         UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"Disable all options?" message:@"This clears QuietTube toggle selections for the next launch, including the enhanced logger. Your YouTube account and history are not changed." preferredStyle:UIAlertControllerStyleAlert];
         [alert addAction:[UIAlertAction actionWithTitle:@"Cancel" style:UIAlertActionStyleCancel handler:nil]];
@@ -211,9 +248,13 @@
             NSMutableDictionary *changes=[NSMutableDictionary dictionaryWithObject:@NO forKey:@"enabled"];
             for (NSDictionary *o in QTOptions()) changes[o[@"key"]]=@NO;
             changes[@"enhancedLogging"]=@NO;
+            changes[@"sponsorSkip"]=@NO;
+            changes[@"sponsorSkipIntroOutro"]=@NO;
+            changes[@"sponsorSkipSelfPromo"]=@NO;
             QTSaveSettings(changes);
             [[NSUserDefaults standardUserDefaults] setObject:@(NO) forKey:@"QuietTube.v1.enhancedLogging"];
             QTEnhancedStop();
+            QTSponsorCacheClear();
             [self.tableView reloadData]; [self showNotice:@"Options disabled · Restart to apply"];
         }]];
         [self presentViewController:alert animated:YES completion:nil];

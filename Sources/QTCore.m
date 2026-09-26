@@ -2,6 +2,7 @@
 #import "QTDiagnosticLog.h"
 #import "QTDiagnosticsBridge.h"
 #import "QTPreferences.h"
+#import "QTSponsorSkip.h"
 #include <string.h>
 #include "QTTemplateScan.h"
 
@@ -64,6 +65,11 @@ NSArray<NSDictionary *> *QTOptions(void) {
 void QTRegisterDefaults(void) {
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     QTInitializePreferences(d, QTOptions());
+    // SponsorSkip defaults: off, preserve existing on upgrade
+    for (NSString *k in @[@"sponsorSkip", @"sponsorSkipIntroOutro", @"sponsorSkipSelfPromo"]) {
+        NSString *full = [QTPrefix stringByAppendingString:k];
+        if ([d objectForKey:full]==nil) [d setBool:NO forKey:full];
+    }
     NSMutableDictionary *active = [NSMutableDictionary dictionary];
     active[@"enabled"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"enabled"]]);
     for (NSDictionary *o in QTOptions())
@@ -216,6 +222,7 @@ NSString *QTDiagnostics(void) {
         for (NSString *group in QTElementGroups)
             [s appendFormat:@"group %lu (seen %@): %@\n",(unsigned long)index++,QTElementGroupCounts[group],group];
     }
+    [s appendString:QTSponsorReport()];
     return s;
 }
 
@@ -231,6 +238,7 @@ __attribute__((constructor)) static void QTStart(void) {
                 QTDEvent(QTDEApp,@{@"phase":@(phase)});
             }];
         }
+        QTSponsorInstall();
         // Bounded late-class retries, never scan/realize every Swift class.
         for (NSNumber *delay in @[@0,@1,@3,@8]) {
             dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue*NSEC_PER_SEC)),

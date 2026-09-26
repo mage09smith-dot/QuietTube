@@ -37,6 +37,14 @@ The base URL is a workflow input, **not a GitHub secret**. The downloader masks 
 
 Uploading to [Catbox](https://catbox.moe/legal.php) means sending a file to a third party. Anyone with the resulting link may be able to download it; anonymous uploads are not private storage. Upload only what you have permission to share. QuietTube neither manages nor removes those uploads.
 
+## SponsorSkip (off by default)
+
+When off, QuietTube makes no SponsorBlock calls and stores no SponsorBlock data.
+
+When on, for each video it hashes the videoID with SHA256 and sends only the first 4 hex characters to `https://sponsor.ajay.app/api/skipSegments/<prefix>`. The server returns segments for all videos sharing that prefix; QuietTube filters locally for your exact videoID and skips locally. The full videoID is not sent. Responses are cached in `Library/Caches/QuietTube/SponsorSkip` (up to 100 videos, 7-day, excluded from backup, cleared with Disable all).
+
+Segment data is community-submitted (CC BY-NC-SA 4.0) and can be wrong or abused — see the disclaimer in **You → Settings → General → Quiet controls → SponsorSkip**.
+
 ## If you exposed something sensitive
 
 Remove it and revoke affected credentials or tokens where applicable. Use GitHub’s removal/reporting process where needed; don’t repost the material while asking for help. Issues should not contain app binaries, account identifiers, passwords, cookies, tokens or unreviewed full captures.

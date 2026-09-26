@@ -58,5 +58,8 @@ void QTSaveSettings(NSDictionary<NSString *,NSNumber *> *changes) {
     NSMutableSet *known=[NSMutableSet setWithObject:@"enabled"];
     for (NSDictionary *option in QTOptions()) [known addObject:option[@"key"]];
     [known addObject:@"enhancedLogging"];
+    [known addObject:@"sponsorSkip"];
+    [known addObject:@"sponsorSkipIntroOutro"];
+    [known addObject:@"sponsorSkipSelfPromo"];
     for (NSString *key in changes) if ([known containsObject:key]) QTSet(key,[changes[key] boolValue]);
 }

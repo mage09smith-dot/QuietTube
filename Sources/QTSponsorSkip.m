@@ -1,4 +1,6 @@
 #import "QTSponsorSkip.h"
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#pragma clang diagnostic ignored "-Warc-performSelector-leaks"
 #import "QTCore.h"
 #import "QTDiagnosticLog.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -719,7 +721,7 @@ void QTSponsorInstall(void) {
         if (!cls) continue;
         for (NSString *selStr in @[@"watchWithVideoId:", @"openWatchWithVideoId:", @"navigateToWatchWithVideoId:", @"loadWithVideoId:", @"cueVideoById:", @"setVideoId:", @"updateVideoId:"]) {
             SEL sel = NSSelectorFromString(selStr);
-            Method m = class_getInstanceMethod(watchImpl, sel);
+            Method m = class_getInstanceMethod(cls, sel);
             if (m) {
                 QTHook(clsName, selStr, @"v@:@", ^id(IMP old, SEL s){
                     return ^(id obj, NSString *vid){

@@ -187,8 +187,14 @@ void QTSponsorCacheClear(void) {
 }
 
 // Find active AVPlayer by traversing view hierarchy and checking AVPlayerLayer
+static BOOL QTSponsorIsVideoID(NSString *s) {
+    if (![s isKindOfClass:NSString.class] || s.length != 11) return NO;
+    NSCharacterSet *allowed = [NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_"];
+    return [[s stringByTrimmingCharactersInSet:allowed] length]==0;
+}
+
 static NSString *QTSponsorExtractVideoID(void) {
-    // Robust extractor: traverses windows/viewControllers and KVC for 11-char videoIDs
+    // Robust extractor: traverses windows/viewControllers and KVC for 11-char videoIDs + brute-force property scan
     NSArray<UIWindow *> *windows = nil;
     if (@available(iOS 15.0, *)) {
         NSMutableArray *all = [NSMutableArray array];
@@ -211,8 +217,9 @@ static NSString *QTSponsorExtractVideoID(void) {
             id obj = queue.firstObject; [queue removeObjectAtIndex:0];
             if ([seen containsObject:obj]) continue;
             [seen addObject:obj];
-            // Try direct KVC for videoId
-            for (NSString *k in @[@"videoId", @"videoID", @"currentVideoId", @"currentVideoID", @"videoIdentifier", @"watchVideoId"]) {
+            // Try direct KVC for videoId + brute-force property scan
+            NSArray *tryKeys = @[@"videoId", @"videoID", @"currentVideoId", @"currentVideoID", @"videoIdentifier", @"watchVideoId", @"watchVideoID", @"identifier", @"video_id", @"playerVideoId", @"activeVideoId", @"currentWorkbookVideoId"];
+            for (NSString *k in tryKeys) {
                 @try {
                     id v = [obj valueForKey:k];
                     if ([v isKindOfClass:NSString.class] && [(NSString*)v length]==11) {
@@ -222,6 +229,29 @@ static NSString *QTSponsorExtractVideoID(void) {
                     }
                 } @catch (__unused NSException *e) {}
             }
+            // Brute-force: scan all NSString properties of this object for videoID-like strings
+            @try {
+                unsigned int count = 0;
+                objc_property_t *props = class_copyPropertyList([obj class], &count);
+                for (unsigned int i=0; i<count; i++) {
+                    const char *name = property_getName(props[i]);
+                    if (!name) continue;
+                    NSString *pname = @(name);
+                    // Only check string properties
+                    @try {
+                        id v = [obj valueForKey:pname];
+                        if (QTSponsorIsVideoID(v)) { free(props); return v; }
+                        // Also check if v is dictionary containing videoId
+                        if ([v isKindOfClass:NSDictionary.class]) {
+                            for (NSString *k in @[@"videoId", @"videoID"]) {
+                                id vv = v[k];
+                                if (QTSponsorIsVideoID(vv)) { free(props); return vv; }
+                            }
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+                free(props);
+            } @catch (__unused NSException *e) {}
             // Try playerResponse.videoId
             @try {
                 id pr = [obj valueForKey:@"playerResponse"];
@@ -684,14 +714,14 @@ void QTSponsorInstall(void) {
         if (found.length) QTSponsorNotifyVideoIDChanged(found);
     });
     // Also hook additional available classes for videoID — try YTAppWatchControllerImpl if selectors exist
-    Class watchImpl = NSClassFromString(@"YTAppWatchControllerImpl");
-    if (watchImpl) {
-        // Try common watch selectors that carry videoId
-        for (NSString *selStr in @[@"watchWithVideoId:", @"openWatchWithVideoId:", @"navigateToWatchWithVideoId:"]) {
+    for (NSString *clsName in @[@"YTAppWatchControllerImpl", @"YTWatchNextService", @"YTWatchController", @"YTHotConfig", @"YTPlayerViewController"]) {
+        Class cls = NSClassFromString(clsName);
+        if (!cls) continue;
+        for (NSString *selStr in @[@"watchWithVideoId:", @"openWatchWithVideoId:", @"navigateToWatchWithVideoId:", @"loadWithVideoId:", @"cueVideoById:", @"setVideoId:", @"updateVideoId:"]) {
             SEL sel = NSSelectorFromString(selStr);
             Method m = class_getInstanceMethod(watchImpl, sel);
             if (m) {
-                QTHook(@"YTAppWatchControllerImpl", selStr, @"v@:@", ^id(IMP old, SEL s){
+                QTHook(clsName, selStr, @"v@:@", ^id(IMP old, SEL s){
                     return ^(id obj, NSString *vid){
                         ((void (*)(id,SEL,id))old)(obj, s, vid);
                         if (vid.length==11) QTSponsorNotifyVideoIDChanged(vid);

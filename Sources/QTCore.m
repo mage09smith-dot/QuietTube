@@ -67,7 +67,7 @@ static BOOL QTIsExpBuild(void) {
     if (!ver) ver = (NSString *)[[NSString alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"VERSION" ofType:nil] encoding:NSUTF8StringEncoding error:nil];
     if (!ver) ver = [[NSString alloc] initWithContentsOfFile:[@"/var/containers/Bundle/Application/QuietTube/VERSION" stringByExpandingTildeInPath] encoding:NSUTF8StringEncoding error:nil];
     // Fallback: read VERSION from app's resource or hardcode for exp builds
-    if (!ver) ver = @"1.3.0-exp.11";
+    if (!ver) ver = @"1.3.0-exp.12";
     return [ver containsString:@"exp"];
 }
 void QTRegisterDefaults(void) {
@@ -77,35 +77,36 @@ void QTRegisterDefaults(void) {
     // For testing exp builds: fresh installs get all tweaks ON + SponsorSkip master ON (except intro/self promo OFF)
     // Preserve existing values on upgrade; only set absent keys.
     if (isExp) {
-        // Detect fresh install: no marker and no existing prefs
-        BOOL isFresh = [d objectForKey:@"QuietTube.preferences.initialized"]==nil && [d objectForKey:[QTPrefix stringByAppendingString:@"enabled"]]==nil;
-        if (isFresh) {
-            // For testing exp: force all tweaks ON even though QTInitializePreferences just set them to defaults (mostly NO)
+        // Testing exp.12: force ALL tweaks ON + SponsorSkip master ON + logging ON for easy testing
+        // Do a one-time migration for existing installs where they were OFF (see your exp.11 log: autoplay/background off, sponsorSkip off)
+        NSString *migratedKey = @"QuietTube.v1.exp12.migrated";
+        BOOL alreadyMigrated = [d boolForKey:migratedKey];
+        if (!alreadyMigrated) {
             for (NSDictionary *o in QTOptions()) {
                 NSString *full = [QTPrefix stringByAppendingString:o[@"key"]];
                 [d setBool:YES forKey:full];
             }
-            // Also ensure master enabled
             [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"enabled"]];
+            [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"sponsorSkip"]];
+            [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"]];
+            [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"]];
+            [d setBool:YES forKey:@"QuietTube.v1.enhancedLogging"];
+            [d setBool:YES forKey:migratedKey];
         } else {
-            // Upgrade to exp: ensure at least ad protections stay on if they were absent (but don't overwrite explicit OFF)
-            // We still ensure sponsorSkip defaults below handle absent
-        }
-        // SponsorSkip testing defaults: master ON, children OFF if absent
-        NSString *master = [QTPrefix stringByAppendingString:@"sponsorSkip"];
-        NSString *intro = [QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"];
-        NSString *promo = [QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"];
-        if ([d objectForKey:master]==nil) [d setBool:YES forKey:master];
-        if ([d objectForKey:intro]==nil) [d setBool:NO forKey:intro];
-        if ([d objectForKey:promo]==nil) [d setBool:NO forKey:promo];
-        // Testing: enhanced logging ON by default (fresh + existing exp where still nil or OFF)
-        // For mage/main testing we force ON so diagnostics are always captured
-        NSString *logKey = @"QuietTube.v1.enhancedLogging";
-        if ([d objectForKey:logKey]==nil) {
-            [d setBool:YES forKey:logKey];
-        } else if (![d boolForKey:logKey]) {
-            // Existing exp where user previously had it OFF — turn ON for testing (preserve on stable)
-            [d setBool:YES forKey:logKey];
+            // Already migrated once — preserve user's manual toggles, but ensure testing defaults for any still-nil keys
+            for (NSDictionary *o in QTOptions()) {
+                NSString *full = [QTPrefix stringByAppendingString:o[@"key"]];
+                if ([d objectForKey:full]==nil) [d setBool:YES forKey:full];
+            }
+            if ([d objectForKey:[QTPrefix stringByAppendingString:@"enabled"]]==nil) [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"enabled"]];
+            NSString *master = [QTPrefix stringByAppendingString:@"sponsorSkip"];
+            NSString *intro = [QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"];
+            NSString *promo = [QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"];
+            if ([d objectForKey:master]==nil) [d setBool:YES forKey:master];
+            if ([d objectForKey:intro]==nil) [d setBool:NO forKey:intro];
+            if ([d objectForKey:promo]==nil) [d setBool:NO forKey:promo];
+            NSString *logKey = @"QuietTube.v1.enhancedLogging";
+            if ([d objectForKey:logKey]==nil) [d setBool:YES forKey:logKey];
         }
     } else {
         // Stable defaults: off, preserve existing on upgrade

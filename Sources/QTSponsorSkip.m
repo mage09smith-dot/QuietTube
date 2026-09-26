@@ -189,7 +189,21 @@ void QTSponsorCacheClear(void) {
 // Find active AVPlayer by traversing view hierarchy and checking AVPlayerLayer
 static AVPlayer *QTSponsorFindPlayer(void) {
     // Try to find via shared application windows
-    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+    // iOS 15+ scene-aware window lookup (falls back to deprecated windows for older)
+    NSArray<UIWindow *> *windows = nil;
+    if (@available(iOS 15.0, *)) {
+        NSMutableArray *all = [NSMutableArray array];
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *ws = (UIWindowScene *)scene;
+                [all addObjectsFromArray:ws.windows];
+            }
+        }
+        windows = all.count ? all : [UIApplication sharedApplication].windows;
+    } else {
+        windows = [UIApplication sharedApplication].windows;
+    }
+    for (UIWindow *window in windows) {
         // BFS over view hierarchy
         NSMutableArray *queue = [NSMutableArray arrayWithObject:window];
         while (queue.count) {
@@ -220,12 +234,98 @@ static AVPlayer *QTSponsorFindPlayer(void) {
     return nil;
 }
 
+
+// Green scrubber marks - find YT's progress bar and add thin green overlays for sponsor segments
+static NSMutableArray<UIView *> *QTSponsorGreenMarks;
+static void QTSponsorClearGreenMarks(void) {
+    for (UIView *v in QTSponsorGreenMarks) [v removeFromSuperview];
+    [QTSponsorGreenMarks removeAllObjects];
+}
+static UIView *QTSponsorFindScrubber(UIView *root) {
+    if (!root) return nil;
+    // BFS for views that look like progress/scrubber (YT uses YTPlayerBar, YTInlinePlayerBar)
+    NSMutableArray *queue = [NSMutableArray arrayWithObject:root];
+    UIView *best = nil;
+    CGFloat bestWidth = 0;
+    while (queue.count) {
+        UIView *v = queue.firstObject; [queue removeObjectAtIndex:0];
+        NSString *name = NSStringFromClass(v.class);
+        if ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"]) {
+            if (v.bounds.size.width > bestWidth && v.bounds.size.width > 100 && v.bounds.size.height < 20) {
+                bestWidth = v.bounds.size.width;
+                best = v;
+            }
+        }
+        [queue addObjectsFromArray:v.subviews];
+    }
+    return best;
+}
+static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
+    if (!segments.count) { QTSponsorClearGreenMarks(); return; }
+    UIWindow *win = nil;
+    if (@available(iOS 15.0, *)) {
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                UIWindowScene *ws = (UIWindowScene *)scene;
+                if (ws.windows.firstObject) { win = ws.windows.firstObject; break; }
+            }
+        }
+    }
+    if (!win) win = [UIApplication sharedApplication].windows.firstObject;
+    if (!win) return;
+    UIView *scrubber = QTSponsorFindScrubber(win);
+    if (!scrubber) {
+        // Try again from keyWindow's root
+        scrubber = QTSponsorFindScrubber(win.rootViewController.view);
+    }
+    if (!scrubber) return;
+    // Need video duration - try to get from player
+    AVPlayer *player = QTSponsorFindPlayer();
+    NSTimeInterval duration = 0;
+    if (player.currentItem) duration = CMTimeGetSeconds(player.currentItem.duration);
+    if (!isfinite(duration) || duration < 1) {
+        // Try first segment's videoDuration or fallback to 600
+        for (NSDictionary *s in segments) { duration = [s[@"videoDuration"] doubleValue]; if (duration>1) break; }
+        if (!isfinite(duration) || duration<1) duration = 600;
+    }
+    QTSponsorClearGreenMarks();
+    if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
+    for (NSDictionary *s in segments) {
+        NSArray *seg = s[@"segment"];
+        if (seg.count!=2) continue;
+        NSTimeInterval start = [seg[0] doubleValue];
+        NSTimeInterval end = [seg[1] doubleValue];
+        if (end <= start) continue;
+        CGFloat w = scrubber.bounds.size.width;
+        CGFloat x = (start / duration) * w;
+        CGFloat sw = ((end - start) / duration) * w;
+        if (sw < 2) sw = 2;
+        UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, 0, sw, scrubber.bounds.size.height)];
+        mark.backgroundColor = [[UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.95] colorWithAlphaComponent:0.92];
+        mark.layer.cornerRadius = 1;
+        mark.userInteractionEnabled = NO;
+        mark.tag = 0x5B1A; // sponsor mark
+        [scrubber addSubview:mark];
+        [QTSponsorGreenMarks addObject:mark];
+    }
+    if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"green", @"segments": @(segments.count)});
+}
+
 static void QTSponsorShowUndoToast(NSTimeInterval from, NSTimeInterval to) {
     // Log only for now; UI toast is hooked via settings if needed
     if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"undo_ready", @"start": @((long long)(from*1000)), @"end": @((long long)(to*1000))});
     // Find top view controller and show simple banner
     dispatch_async(dispatch_get_main_queue(), ^{
-        UIWindow *win = [UIApplication sharedApplication].windows.firstObject;
+        UIWindow *win = nil;
+        if (@available(iOS 15.0, *)) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *ws = (UIWindowScene *)scene;
+                    if (ws.windows.firstObject) { win = ws.windows.firstObject; break; }
+                }
+            }
+        }
+        if (!win) win = [UIApplication sharedApplication].windows.firstObject;
         UIViewController *vc = win.rootViewController;
         while (vc.presentedViewController) vc = vc.presentedViewController;
         if (!vc) return;
@@ -354,6 +454,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
     if (!videoID.length) {
         QTCurrentVideoID = nil;
         QTCurrentSegments = nil;
+        dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorClearGreenMarks(); });
         if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"clear", @"cached": @(0)});
         return;
     }
@@ -364,6 +465,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
     NSArray *cached = QTSponsorCacheLoad(videoID);
     if (cached) {
         QTCurrentSegments = cached;
+        dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(cached); });
         if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"hit", @"segments": @(cached.count), @"filtered": @(QTSponsorFilteredSegments(cached).count), @"cached": @(1)});
         return;
     }
@@ -371,6 +473,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
     QTSponsorFetch(videoID, ^(NSArray<NSDictionary *> *segments) {
         if ([QTCurrentVideoID isEqualToString:videoID]) {
             QTCurrentSegments = segments ?: @[];
+            dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(segments ?: @[]); });
             if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"fetched", @"segments": @(segments.count), @"cached": @(0)});
         } else {
             if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"stale", @"cached": @(0)});

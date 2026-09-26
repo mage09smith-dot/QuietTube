@@ -64,9 +64,9 @@ Sampling still runs at the native callback and has a cost. Keep the master on on
 
 ## SponsorSkip in diagnostics
 
-SponsorSkip is off by default and does not write to the diagnostic log unless Enhanced logging is also on.
+SponsorSkip is off by default and does not write to the diagnostic log unless Enhanced logging is also on. In 1.3.0-exp.5+ testing builds, logging is forced ON so diagnostics are always captured.
 
-When both are on, the log includes `sponsorSkip: segment skipped` + category (`sponsor` / `intro` / `outro` / `selfpromo`) and the seek target. The support snapshot (`Export logs` → diagnostics) also appends `QTSponsorReport()` — master/children state, total skipped, cache size — so you can see if a jump was from SponsorSkip or from YouTube.
+When both are on, the log includes `sponsorFetch` (events 9: prefix, segments/filtered, latency, status, hit/miss), `sponsorSkip` (event 10: prefix, start/end ms, category, votes, result=skip/noskip/grace/noplayer/disabled), `sponsorCache` (event 11: hit/miss/store/clear/green) and `sponsorSkip: segment skipped` + category (`sponsor` / `intro` / `outro` / `selfpromo`) and the seek target. The support snapshot (`Export logs` → diagnostics) also appends `QTSponsorReport()` — master/children state, total skipped, fetches, cacheHits, current prefix, segments, timer — so you can see if a jump was from SponsorSkip or from YouTube. Green scrubber marks are also logged as `green` cache events.
 
 SponsorSkip cache itself (`Library/Caches/QuietTube/SponsorSkip`) is not part of the diagnostic export; it holds only hashed lookups (prefix → segments) for 7 days.
 

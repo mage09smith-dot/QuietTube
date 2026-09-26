@@ -67,7 +67,7 @@ static BOOL QTIsExpBuild(void) {
     if (!ver) ver = (NSString *)[[NSString alloc] initWithContentsOfFile:[[NSBundle mainBundle] pathForResource:@"VERSION" ofType:nil] encoding:NSUTF8StringEncoding error:nil];
     if (!ver) ver = [[NSString alloc] initWithContentsOfFile:[@"/var/containers/Bundle/Application/QuietTube/VERSION" stringByExpandingTildeInPath] encoding:NSUTF8StringEncoding error:nil];
     // Fallback: read VERSION from app's resource or hardcode for exp builds
-    if (!ver) ver = @"1.3.0-exp.5";
+    if (!ver) ver = @"1.3.0-exp.9";
     return [ver containsString:@"exp"];
 }
 void QTRegisterDefaults(void) {

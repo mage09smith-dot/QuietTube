@@ -231,29 +231,7 @@ static NSString *QTSponsorExtractVideoID(void) {
                     }
                 } @catch (__unused NSException *e) {}
             }
-            // Brute-force: scan all NSString properties of this object for videoID-like strings
-            @try {
-                unsigned int count = 0;
-                objc_property_t *props = class_copyPropertyList([obj class], &count);
-                for (unsigned int i=0; i<count; i++) {
-                    const char *name = property_getName(props[i]);
-                    if (!name) continue;
-                    NSString *pname = @(name);
-                    // Only check string properties
-                    @try {
-                        id v = [obj valueForKey:pname];
-                        if (QTSponsorIsVideoID(v)) { free(props); return v; }
-                        // Also check if v is dictionary containing videoId
-                        if ([v isKindOfClass:NSDictionary.class]) {
-                            for (NSString *k in @[@"videoId", @"videoID"]) {
-                                id vv = v[k];
-                                if (QTSponsorIsVideoID(vv)) { free(props); return vv; }
-                            }
-                        }
-                    } @catch (__unused NSException *e) {}
-                }
-                free(props);
-            } @catch (__unused NSException *e) {}
+            // (Removed brute-force property scan — was causing crashes on YouTube's KVO objects)
             // Try playerResponse.videoId
             @try {
                 id pr = [obj valueForKey:@"playerResponse"];

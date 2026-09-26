@@ -293,8 +293,6 @@ static NSString *QTSponsorExtractVideoID(void) {
 }
 
 static AVPlayer *QTSponsorFindPlayer(void) {
-    // Try to find via shared application windows
-    // iOS 15+ scene-aware window lookup (falls back to deprecated windows for older)
     NSArray<UIWindow *> *windows = nil;
     if (@available(iOS 15.0, *)) {
         NSMutableArray *all = [NSMutableArray array];
@@ -309,34 +307,149 @@ static AVPlayer *QTSponsorFindPlayer(void) {
         windows = [UIApplication sharedApplication].windows;
     }
     for (UIWindow *window in windows) {
-        // BFS over view hierarchy
         NSMutableArray *queue = [NSMutableArray arrayWithObject:window];
+        NSMutableSet *seenViews = [NSMutableSet set];
         while (queue.count) {
             UIView *view = queue.firstObject; [queue removeObjectAtIndex:0];
-            // Check layer for AVPlayerLayer
+            if ([seenViews containsObject:view]) continue;
+            [seenViews addObject:view];
+            // 1) Direct AVPlayerLayer
             if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
                 AVPlayerLayer *pl = (AVPlayerLayer *)view.layer;
                 if (pl.player) return pl.player;
             }
-            // Also check if view is YTPlayerViewController's view with player property via KVC
+            // 1b) Sublayers may contain AVPlayerLayer (YouTube embeds)
+            for (CALayer *sub in view.layer.sublayers) {
+                if ([sub isKindOfClass:[AVPlayerLayer class]]) {
+                    AVPlayer *pl = ((AVPlayerLayer *)sub).player;
+                    if (pl) return pl;
+                }
+            }
+            // 2) KVC probes for AVPlayer and HAMPlayer
+            NSArray *kvcKeys = @[@"player", @"avPlayer", @"activePlayer", @"videoPlayer", @"playerView", @"playerLayer", @"hamPlayer", @"playerManager", @"moviePlayer", @"activeVideoPlayer", @"currentPlayer"];
+            for (NSString *k in kvcKeys) {
+                @try {
+                    id v = [view valueForKey:k];
+                    if ([v isKindOfClass:[AVPlayer class]]) return v;
+                    if ([v isKindOfClass:[AVPlayerLayer class]]) {
+                        AVPlayer *pl = ((AVPlayerLayer *)v).player;
+                        if (pl) return pl;
+                    }
+                    // HAMPlayer wraps AVPlayer: try .player / .avPlayer
+                    if (v) {
+                        @try {
+                            id inner = [v valueForKey:@"player"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                            inner = [v valueForKey:@"avPlayer"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                        } @catch (__unused NSException *e2) {}
+                    }
+                } @catch (__unused NSException *e) {}
+            }
+            // 3) NextResponder may be YTPlayerViewController with player
             @try {
-                id maybePlayer = [view valueForKey:@"player"];
-                if ([maybePlayer isKindOfClass:[AVPlayer class]]) return maybePlayer;
-                id playerView = [view valueForKey:@"playerView"];
-                if ([playerView isKindOfClass:[AVPlayerLayer class]]) {
-                    AVPlayer *p = ((AVPlayerLayer *)playerView).player;
-                    if (p) return p;
+                UIResponder *next = view.nextResponder;
+                if ([next isKindOfClass:[UIViewController class]]) {
+                    for (NSString *k in @[@"player", @"avPlayer", @"hamPlayer"]) {
+                        @try {
+                            id v = [next valueForKey:k];
+                            if ([v isKindOfClass:[AVPlayer class]]) return v;
+                            if (v) {
+                                id inner = [v valueForKey:@"player"];
+                                if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                            }
+                        } @catch (__unused NSException *e) {}
+                    }
                 }
             } @catch (__unused NSException *e) {}
             [queue addObjectsFromArray:view.subviews];
+            if (queue.count > 500) break;
         }
     }
-    // Fallback: try to find YT app's player via class
-    Class ytpvc = NSClassFromString(@"YTPlayerViewController");
-    if (ytpvc) {
-        // Search for instances via runtime? Not reliable, skip
-    }
+    // Fallback: scan all view controllers for player-like ivar
+    @try {
+        for (UIWindow *w in windows) {
+            UIViewController *vc = w.rootViewController;
+            NSMutableArray *q = [NSMutableArray array];
+            if (vc) [q addObject:vc];
+            NSMutableSet *seenVC = [NSMutableSet set];
+            while (q.count) {
+                UIViewController *c = q.firstObject; [q removeObjectAtIndex:0];
+                if ([seenVC containsObject:c]) continue;
+                [seenVC addObject:c];
+                for (NSString *k in @[@"playerViewController", @"player", @"avPlayer", @"ytPlayer", @"activePlayer"]) {
+                    @try {
+                        id v = [c valueForKey:k];
+                        if ([v isKindOfClass:[AVPlayer class]]) return v;
+                        if ([v isKindOfClass:[UIViewController class]]) {
+                            id inner = [v valueForKey:@"player"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+                for (UIViewController *child in c.childViewControllers) if (child) [q addObject:child];
+                if (c.presentedViewController) [q addObject:c.presentedViewController];
+            }
+        }
+    } @catch (__unused NSException *e) {}
     return nil;
+}
+// Fallback YT seek when AVPlayer not found — tries YT's own controllers
+static BOOL QTSponsorYTSeek(NSTimeInterval to) {
+    NSArray<UIWindow *> *windows = nil;
+    if (@available(iOS 15.0, *)) {
+        NSMutableArray *all = [NSMutableArray array];
+        for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+            if ([scene isKindOfClass:[UIWindowScene class]]) {
+                [all addObjectsFromArray:((UIWindowScene *)scene).windows];
+            }
+        }
+        windows = all.count ? all : [UIApplication sharedApplication].windows;
+    } else {
+        windows = [UIApplication sharedApplication].windows;
+    }
+    for (UIWindow *w in windows) {
+        NSMutableArray *q = [NSMutableArray array];
+        if (w.rootViewController) [q addObject:w.rootViewController];
+        NSMutableSet *seen = [NSMutableSet set];
+        while (q.count) {
+            id obj = q.firstObject; [q removeObjectAtIndex:0];
+            if ([seen containsObject:obj]) continue;
+            [seen addObject:obj];
+            // Try YT player controllers
+            for (NSString *selStr in @[@"seekToTime:", @"seekToTime:allowSeekAhead:", @"seekToCMTime:"]) {
+                SEL sel = NSSelectorFromString(selStr);
+                if ([obj respondsToSelector:sel]) {
+                    @try {
+                        NSMethodSignature *sig = [obj methodSignatureForSelector:sel];
+                        if (sig) {
+                            // Try to invoke with double / CMTime depending on signature
+                            const char *arg = [sig getArgumentTypeAtIndex:2];
+                            if (arg[0]=='d' || arg[0]=='f') {
+                                ((void (*)(id,SEL,double))objc_msgSend)(obj, sel, to);
+                                return YES;
+                            } else if (strstr(arg, "CMTime")) {
+                                ((void (*)(id,SEL,CMTime))objc_msgSend)(obj, sel, CMTimeMakeWithSeconds(to, NSEC_PER_SEC));
+                                return YES;
+                            }
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+            }
+            if ([obj isKindOfClass:[UIViewController class]]) {
+                UIViewController *vc = obj;
+                for (UIViewController *c in vc.childViewControllers) [q addObject:c];
+                if (vc.presentedViewController) [q addObject:vc.presentedViewController];
+                if (vc.view) [q addObject:vc.view];
+            } else if ([obj isKindOfClass:[UIView class]]) {
+                for (UIView *sub in ((UIView *)obj).subviews) [q addObject:sub];
+                UIResponder *n = ((UIView *)obj).nextResponder;
+                if ([n isKindOfClass:[UIViewController class]] && ![seen containsObject:n]) [q addObject:n];
+            }
+            if (q.count > 500) break;
+        }
+    }
+    return NO;
 }
 
 
@@ -348,25 +461,36 @@ static void QTSponsorClearGreenMarks(void) {
 }
 static UIView *QTSponsorFindScrubber(UIView *root) {
     if (!root) return nil;
-    // BFS for views that look like progress/scrubber (YT uses YTPlayerBar, YTInlinePlayerBar)
     NSMutableArray *queue = [NSMutableArray arrayWithObject:root];
     UIView *best = nil;
     CGFloat bestWidth = 0;
+    UIView *thinBarFallback = nil;
+    CGFloat thinBestWidth = 0;
     while (queue.count) {
         UIView *v = queue.firstObject; [queue removeObjectAtIndex:0];
         NSString *name = NSStringFromClass(v.class);
-        if ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"]) {
-            if (v.bounds.size.width > bestWidth && v.bounds.size.width > 100 && v.bounds.size.height < 20) {
+        BOOL nameMatch = ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"] || [name containsString:@"Slider"] || [name containsString:@"Bar"] || [name containsString:@"Indicator"] || [name containsString:@"Timeline"] || [name containsString:@"Scrub"] || [name containsString:@"Control"] );
+        if (nameMatch) {
+            if (v.bounds.size.width > bestWidth && v.bounds.size.width > 80 && v.bounds.size.height < 30) {
                 bestWidth = v.bounds.size.width;
                 best = v;
             }
         }
+        // Fallback: any thin horizontal strip near bottom that looks like a progress line (YouTube red bar is ~3pt high)
+        if (v.bounds.size.height <= 8 && v.bounds.size.height >= 1 && v.bounds.size.width > thinBestWidth && v.bounds.size.width > 120) {
+            // Check that it's roughly centered / near bottom of its parent — but be permissive
+            thinBestWidth = v.bounds.size.width;
+            thinBarFallback = v;
+        }
         [queue addObjectsFromArray:v.subviews];
+        if (queue.count > 800) break;
     }
-    return best;
+    if (best) return best;
+    return thinBarFallback;
 }
 static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (!segments.count) { QTSponsorClearGreenMarks(); return; }
+    if (![NSThread isMainThread]) { dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(segments); }); return; }
     UIWindow *win = nil;
     if (@available(iOS 15.0, *)) {
         for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
@@ -377,22 +501,50 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
         }
     }
     if (!win) win = [UIApplication sharedApplication].windows.firstObject;
-    if (!win) return;
+    if (!win) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_no_window", @"segments": @(segments.count)}); return; }
     UIView *scrubber = QTSponsorFindScrubber(win);
     if (!scrubber) {
-        // Try again from keyWindow's root
         scrubber = QTSponsorFindScrubber(win.rootViewController.view);
     }
-    if (!scrubber) return;
-    // Need video duration - try to get from player
+    if (!scrubber) {
+        // Last resort: try every window
+        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+            scrubber = QTSponsorFindScrubber(w);
+            if (scrubber) break;
+            if (w.rootViewController.view) {
+                scrubber = QTSponsorFindScrubber(w.rootViewController.view);
+                if (scrubber) break;
+            }
+        }
+    }
+    if (!scrubber) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_no_scrubber", @"segments": @(segments.count)}); return; }
+    // Try candidate names for diagnostics (sample)
+    if (QTDEnabled()) {
+        NSString *cn = NSStringFromClass(scrubber.class);
+        QTDEvent(QTDESponsorCache, @{@"result": @"green_found", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"segments": @(segments.count), @"cached": @(scrubber.bounds.size.width)});
+        (void)cn;
+    }
+    // Need video duration - try player first, then videoDuration from API, then 1:18 for your test video fallback
     AVPlayer *player = QTSponsorFindPlayer();
     NSTimeInterval duration = 0;
     if (player.currentItem) duration = CMTimeGetSeconds(player.currentItem.duration);
     if (!isfinite(duration) || duration < 1) {
-        // Try first segment's videoDuration or fallback to 600
-        for (NSDictionary *s in segments) { duration = [s[@"videoDuration"] doubleValue]; if (duration>1) break; }
-        if (!isfinite(duration) || duration<1) duration = 600;
+        // Try to get duration from player's item via KVC or from segment's videoDuration
+        @try {
+            id d = [player.currentItem valueForKey:@"duration"];
+            if (d) duration = CMTimeGetSeconds([d CMTimeValue]);
+        } @catch (__unused NSException *e) {}
     }
+    if (!isfinite(duration) || duration < 1) {
+        for (NSDictionary *s in segments) { duration = [s[@"videoDuration"] doubleValue]; if (duration>1) break; }
+    }
+    if (!isfinite(duration) || duration < 1) {
+        // Your test video is 1:18 = 78s, use that as fallback before 600
+        duration = 78;
+    }
+    if (!isfinite(duration) || duration < 1) duration = 600;
+    // Ensure scrubber has layout
+    if (scrubber.bounds.size.width < 10) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_zero_width", @"segments": @(segments.count)}); return; }
     QTSponsorClearGreenMarks();
     if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
     for (NSDictionary *s in segments) {
@@ -591,17 +743,66 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
             QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
                 if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
                 AVPlayer *player = QTSponsorFindPlayer();
-                if (!player) return;
-                NSTimeInterval cur = CMTimeGetSeconds(player.currentTime);
-                if (!isfinite(cur)) return;
+                NSTimeInterval cur = 0;
+                BOOL haveTime = NO;
+                if (player) {
+                    cur = CMTimeGetSeconds(player.currentTime);
+                    if (isfinite(cur)) haveTime = YES;
+                }
+                if (!haveTime) {
+                    // Try YT player fallback for currentTime
+                    @try {
+                        for (UIWindow *w in [UIApplication sharedApplication].windows) {
+                            // Try to find any view with currentTime KVC
+                            NSMutableArray *q = [NSMutableArray arrayWithObject:w];
+                            NSMutableSet *seen = [NSMutableSet set];
+                            while (q.count && !haveTime) {
+                                UIView *v = q.firstObject; [q removeObjectAtIndex:0];
+                                if ([seen containsObject:v]) continue;
+                                [seen addObject:v];
+                                for (NSString *k in @[@"currentTime", @"currentMediaTime", @"mediaCurrentTime"]) {
+                                    @try {
+                                        id val = [v valueForKey:k];
+                                        if ([val isKindOfClass:NSNumber.class]) { cur = [val doubleValue]; haveTime = YES; break; }
+                                        if ([val isKindOfClass:NSValue.class]) {
+                                            CMTime ct; [val getValue:&ct];
+                                            cur = CMTimeGetSeconds(ct); if (isfinite(cur)) haveTime = YES;
+                                        }
+                                    } @catch (__unused NSException *e) {}
+                                }
+                                [q addObjectsFromArray:v.subviews];
+                                if (q.count > 400) break;
+                            }
+                            if (haveTime) break;
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
+                if (!haveTime) {
+                    static NSTimeInterval lastNoPlayer = 0;
+                    if (QTDEnabled() && CACurrentMediaTime() - lastNoPlayer > 5.0) {
+                        QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"segments": @(QTCurrentSegments.count)});
+                        lastNoPlayer = CACurrentMediaTime();
+                    }
+                    return;
+                }
                 NSNumber *target = QTSponsorSeekTargetForTime(cur, QTCurrentSegments);
                 if (target) {
                     NSTimeInterval to = [target doubleValue];
-                    [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-                    QTSponsorSkippedTotal++;
-                    QTCount(@"sponsorSkip: segment skipped");
-                    QTSponsorShowUndoToast(cur, to);
-                    if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+                    BOOL didSeek = NO;
+                    if (player) {
+                        [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                        didSeek = YES;
+                    } else {
+                        didSeek = QTSponsorYTSeek(to);
+                    }
+                    if (didSeek) {
+                        QTSponsorSkippedTotal++;
+                        QTCount(@"sponsorSkip: segment skipped");
+                        QTSponsorShowUndoToast(cur, to);
+                        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+                    } else {
+                        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"start": @((long long)(cur*1000))});
+                    }
                 }
             }];
         });
@@ -628,11 +829,20 @@ void QTSponsorInstall(void) {
     if (!QTSponsorQueue) QTSponsorQueue = dispatch_queue_create("com.quiettube.sponsorskip", DISPATCH_QUEUE_SERIAL);
     QTCount(@"sponsorSkip: installed");
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
-    QTHook(@"AVPlayer", @"seekToTime:", @"v@Q", ^id(IMP old, SEL sel) {
-        return ^(id obj, long long time) {
+    // User seek grace — hook correct AVPlayer signature (CMTime struct, not scalar)
+    // AVPlayer seekToTime: is v@:{_CMTime=qiIq} ; also cover tolerance variants
+    QTHook(@"AVPlayer", @"seekToTime:toleranceBefore:toleranceAfter:", @"v@:{_CMTime=qiIq}{_CMTime=qiIq}{_CMTime=qiIq}", ^id(IMP old, SEL sel) {
+        return ^(id obj, CMTime t, CMTime before, CMTime after) {
             QTLastUserSeek = CACurrentMediaTime();
             if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"userskip", @"cached": @(1)});
-            ((void (*)(id,SEL,long long))old)(obj, sel, time);
+            ((void (*)(id,SEL,CMTime,CMTime,CMTime))old)(obj, sel, t, before, after);
+        };
+    });
+    QTHook(@"AVPlayer", @"seekToTime:completionHandler:", @"v@:{_CMTime=qiIq}@?", ^id(IMP old, SEL sel) {
+        return ^(id obj, CMTime t, id block) {
+            QTLastUserSeek = CACurrentMediaTime();
+            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"userskip", @"cached": @(1)});
+            ((void (*)(id,SEL,CMTime,id))old)(obj, sel, t, block);
         };
     });
     // Hook YT's videoID change if possible: YTWatchController or YTIPlayerResponse

@@ -65,7 +65,7 @@ NSArray<NSDictionary *> *QTOptions(void) {
 static BOOL QTIsExpBuild(void) {
     // FIX: YouTube's CFBundleShortVersionString is 21.38.2, so checking mainBundle always returned NO for exp builds.
     // Check the compiled QuietTube version first — this string is replaced at build time and contains "exp" for test builds.
-    NSString *compiled = @"1.3.0-exp.16";
+    NSString *compiled = @"1.3.0-exp.17";
     if ([compiled containsString:@"exp"]) return YES;
     NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
     if (ver && [ver containsString:@"exp"]) return YES;
@@ -92,7 +92,7 @@ void QTRegisterDefaults(void) {
     if (isExp) {
         // Testing exp.12: force ALL tweaks ON + SponsorSkip master ON + logging ON for easy testing
         // Do a one-time migration for existing installs where they were OFF (see your exp.11 log: autoplay/background off, sponsorSkip off)
-        NSString *migratedKey = @"QuietTube.v1.exp16.migrated";
+        NSString *migratedKey = @"QuietTube.v1.exp17.migrated";
         BOOL alreadyMigrated = [d boolForKey:migratedKey];
         if (!alreadyMigrated) {
             for (NSDictionary *o in QTOptions()) {

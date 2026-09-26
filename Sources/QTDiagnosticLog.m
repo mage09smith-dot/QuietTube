@@ -46,7 +46,7 @@ NSDictionary *QTDSanitize(NSDictionary *fields) {
     }
     for (NSString *key in @[@"prefix",@"category",@"result"]) {
         id value=fields[key];
-        if (![value isKindOfClass:NSString.class] || value.length>32) continue;
+        if (![value isKindOfClass:NSString.class] || [(NSString *)value length]>32) continue;
         if (!QTDIdentifier(value, NO)) continue;
         safe[key]=[value copy];
     }

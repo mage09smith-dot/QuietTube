@@ -3,6 +3,8 @@
 #import "QTDiagnosticLog.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <QuartzCore/QuartzCore.h>
+#import <AVFoundation/AVFoundation.h>
+#import <UIKit/UIKit.h>
 
 NSString * const QTSponsorSkipEnabledKey = @"QuietTube.v1.sponsorSkip";
 NSString * const QTSponsorSkipIntroOutroKey = @"QuietTube.v1.sponsorSkipIntroOutro";
@@ -10,11 +12,15 @@ NSString * const QTSponsorSkipSelfPromoKey = @"QuietTube.v1.sponsorSkipSelfPromo
 NSString * const QTSponsorSkipAPIURL = @"https://sponsor.ajay.app";
 
 static NSUInteger QTSponsorSkippedTotal = 0;
+static NSUInteger QTSponsorFetchCount = 0;
+static NSUInteger QTSponsorCacheHits = 0;
 static NSMutableDictionary<NSString *, NSArray<NSDictionary *> *> *QTSponsorMemoryCache;
 static dispatch_queue_t QTSponsorQueue;
 static NSString *QTCurrentVideoID;
 static NSArray<NSDictionary *> *QTCurrentSegments;
 static NSTimeInterval QTLastUserSeek = 0;
+static NSTimer *QTSponsorTimer;
+static NSInteger QTSponsorLastLoggedSegmentCount = -1;
 
 BOOL QTSponsorSkipEnabled(void) {
     return [NSUserDefaults.standardUserDefaults boolForKey:QTSponsorSkipEnabledKey];
@@ -29,7 +35,7 @@ BOOL QTSponsorCategoryEnabled(NSString *category) {
     if ([category isEqualToString:@"sponsor"]) return QTSponsorSkipEnabled();
     if ([category isEqualToString:@"intro"] || [category isEqualToString:@"outro"]) return QTSponsorSkipIntroOutroEnabled();
     if ([category isEqualToString:@"selfpromo"]) return QTSponsorSkipSelfPromoEnabled();
-    return NO; // other categories (interaction, preview, music_offtopic) not supported in QuietTube
+    return NO;
 }
 
 NSString *QTSponsorHashForVideoID(NSString *videoID) {
@@ -57,18 +63,40 @@ NSArray<NSDictionary *> *QTSponsorFilteredSegments(NSArray<NSDictionary *> *segm
 }
 
 NSNumber *QTSponsorSeekTargetForTime(NSTimeInterval currentTime, NSArray<NSDictionary *> *segments) {
-    if (!QTSponsorSkipEnabled() || !segments.count) return nil;
-    // Don't interfere if user just seeked manually (2s grace)
-    if (QTLastUserSeek > 0 && (CACurrentMediaTime() - QTLastUserSeek) < 2.0) return nil;
+    if (!QTSponsorSkipEnabled()) {
+        if (QTDEnabled() && QTSponsorLastLoggedSegmentCount != -2) {
+            QTDEvent(QTDESponsorSkip, @{@"result": @"disabled", @"segments": @(segments.count), @"cached": @(0)});
+            QTSponsorLastLoggedSegmentCount = -2;
+        }
+        return nil;
+    }
+    if (!segments.count) return nil;
+    if (QTLastUserSeek > 0 && (CACurrentMediaTime() - QTLastUserSeek) < 2.0) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"grace", @"cached": @(1), @"segments": @(segments.count)});
+        return nil;
+    }
     NSArray *filtered = QTSponsorFilteredSegments(segments);
     for (NSDictionary *s in filtered) {
         NSArray *seg = s[@"segment"];
         if (seg.count != 2) continue;
         NSTimeInterval start = [seg[0] doubleValue];
         NSTimeInterval end = [seg[1] doubleValue];
-        if (currentTime >= start && currentTime < end - 0.3) { // 0.3s before end to avoid loop
+        if (currentTime >= start && currentTime < end - 0.3) {
+            if (QTDEnabled()) {
+                NSString *cat = s[@"category"] ?: @"unknown";
+                NSNumber *votes = s[@"votes"] ?: @0;
+                QTDEvent(QTDESponsorSkip, @{@"result": @"skip", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none",
+                                             @"category": cat, @"votes": votes, @"start": @((long long)(start*1000)), @"end": @((long long)(end*1000)),
+                                             @"segments": @(segments.count), @"filtered": @(filtered.count), @"skipped": @(QTSponsorSkippedTotal+1)});
+            }
             return @(end);
         }
+    }
+    // Log noskip once per segment set to avoid spam, but sample every 10s
+    static NSTimeInterval lastNoSkipLog = 0;
+    if (QTDEnabled() && CACurrentMediaTime() - lastNoSkipLog > 10.0) {
+        QTDEvent(QTDESponsorSkip, @{@"result": @"noskip", @"segments": @(segments.count), @"filtered": @(filtered.count), @"cached": @(1)});
+        lastNoSkipLog = CACurrentMediaTime();
     }
     return nil;
 }
@@ -84,16 +112,16 @@ void QTSponsorCacheStore(NSString *videoID, NSArray<NSDictionary *> *segments) {
     if (!videoID || !segments) return;
     if (!QTSponsorMemoryCache) QTSponsorMemoryCache = [NSMutableDictionary dictionary];
     QTSponsorMemoryCache[videoID] = segments;
-    // Disk: async, bounded
+    if (QTDEnabled()) {
+        QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(videoID) ?: @"none", @"segments": @(segments.count), @"result": @"store", @"cached": @(1)});
+    }
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         NSString *path = QTSponsorCachePath(videoID);
         if (!path) return;
         NSString *dir = path.stringByDeletingLastPathComponent;
         [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFileProtectionKey: NSFileProtectionCompleteUntilFirstUserAuthentication} error:nil];
-        // Limit to 100 files, 7-day expiry on write
         NSArray *files = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil];
         if (files.count > 100) {
-            // Remove oldest
             NSMutableArray *full = [NSMutableArray array];
             for (NSString *f in files) [full addObject:[dir stringByAppendingPathComponent:f]];
             [full sortUsingComparator:^NSComparisonResult(NSString *a, NSString *b) {
@@ -102,12 +130,12 @@ void QTSponsorCacheStore(NSString *videoID, NSArray<NSDictionary *> *segments) {
                 return [aa[NSFileModificationDate] compare:bb[NSFileModificationDate]];
             }];
             for (NSUInteger i=0;i<full.count-100;i++) [[NSFileManager defaultManager] removeItemAtPath:full[i] error:nil];
+            if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"evict", @"segments": @(files.count), @"cached": @(100)});
         }
         NSDictionary *payload = @{@"videoID": videoID, @"segments": segments, @"fetched": @([[NSDate date] timeIntervalSince1970])};
         NSData *data = [NSJSONSerialization dataWithJSONObject:payload options:0 error:nil];
         if (data) {
             [data writeToFile:path options:NSDataWritingAtomic error:nil];
-            // Exclude from backup + expiry marker
             NSURL *url = [NSURL fileURLWithPath:path];
             [url setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:nil];
         }
@@ -116,27 +144,38 @@ void QTSponsorCacheStore(NSString *videoID, NSArray<NSDictionary *> *segments) {
 
 NSArray<NSDictionary *> *QTSponsorCacheLoad(NSString *videoID) {
     if (!videoID) return nil;
-    if (QTSponsorMemoryCache[videoID]) return QTSponsorMemoryCache[videoID];
+    if (QTSponsorMemoryCache[videoID]) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(videoID) ?: @"none", @"result": @"hit", @"cached": @(1), @"segments": @([QTSponsorMemoryCache[videoID] count])});
+        QTSponsorCacheHits++;
+        return QTSponsorMemoryCache[videoID];
+    }
     NSString *path = QTSponsorCachePath(videoID);
     if (!path) return nil;
     NSData *data = [NSData dataWithContentsOfFile:path];
-    if (!data) return nil;
+    if (!data) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(videoID) ?: @"none", @"result": @"miss", @"cached": @(0)});
+        return nil;
+    }
     NSDictionary *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
     NSTimeInterval fetched = [json[@"fetched"] doubleValue];
     if (fetched > 0 && [[NSDate date] timeIntervalSince1970] - fetched > 7*24*60*60) {
         [[NSFileManager defaultManager] removeItemAtPath:path error:nil];
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(videoID) ?: @"none", @"result": @"expired", @"cached": @(0)});
         return nil;
     }
     NSArray *segments = json[@"segments"];
     if ([segments isKindOfClass:NSArray.class]) {
         if (!QTSponsorMemoryCache) QTSponsorMemoryCache = [NSMutableDictionary dictionary];
         QTSponsorMemoryCache[videoID] = segments;
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(videoID) ?: @"none", @"result": @"hit", @"cached": @(1), @"segments": @(segments.count)});
+        QTSponsorCacheHits++;
         return segments;
     }
     return nil;
 }
 
 void QTSponsorCacheClear(void) {
+    NSString *prefix = QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none";
     QTSponsorMemoryCache = [NSMutableDictionary dictionary];
     NSString *cache = NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES).firstObject;
     if (!cache) return;
@@ -144,35 +183,129 @@ void QTSponsorCacheClear(void) {
     [[NSFileManager defaultManager] removeItemAtPath:dir error:nil];
     QTCurrentSegments = nil;
     QTCurrentVideoID = nil;
+    if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": prefix, @"result": @"clear", @"cached": @(0)});
+}
+
+// Find active AVPlayer by traversing view hierarchy and checking AVPlayerLayer
+static AVPlayer *QTSponsorFindPlayer(void) {
+    // Try to find via shared application windows
+    for (UIWindow *window in [UIApplication sharedApplication].windows) {
+        // BFS over view hierarchy
+        NSMutableArray *queue = [NSMutableArray arrayWithObject:window];
+        while (queue.count) {
+            UIView *view = queue.firstObject; [queue removeObjectAtIndex:0];
+            // Check layer for AVPlayerLayer
+            if ([view.layer isKindOfClass:[AVPlayerLayer class]]) {
+                AVPlayerLayer *pl = (AVPlayerLayer *)view.layer;
+                if (pl.player) return pl.player;
+            }
+            // Also check if view is YTPlayerViewController's view with player property via KVC
+            @try {
+                id maybePlayer = [view valueForKey:@"player"];
+                if ([maybePlayer isKindOfClass:[AVPlayer class]]) return maybePlayer;
+                id playerView = [view valueForKey:@"playerView"];
+                if ([playerView isKindOfClass:[AVPlayerLayer class]]) {
+                    AVPlayer *p = ((AVPlayerLayer *)playerView).player;
+                    if (p) return p;
+                }
+            } @catch (__unused NSException *e) {}
+            [queue addObjectsFromArray:view.subviews];
+        }
+    }
+    // Fallback: try to find YT app's player via class
+    Class ytpvc = NSClassFromString(@"YTPlayerViewController");
+    if (ytpvc) {
+        // Search for instances via runtime? Not reliable, skip
+    }
+    return nil;
+}
+
+static void QTSponsorShowUndoToast(NSTimeInterval from, NSTimeInterval to) {
+    // Log only for now; UI toast is hooked via settings if needed
+    if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"undo_ready", @"start": @((long long)(from*1000)), @"end": @((long long)(to*1000))});
+    // Find top view controller and show simple banner
+    dispatch_async(dispatch_get_main_queue(), ^{
+        UIWindow *win = [UIApplication sharedApplication].windows.firstObject;
+        UIViewController *vc = win.rootViewController;
+        while (vc.presentedViewController) vc = vc.presentedViewController;
+        if (!vc) return;
+        NSString *msg = [NSString stringWithFormat:@"Skipped sponsor %.0fs → %.0fs • Undo", from, to];
+        UILabel *label = [[UILabel alloc] init];
+        label.text = msg;
+        label.font = [UIFont systemFontOfSize:13 weight:UIFontWeightMedium];
+        label.textColor = [UIColor whiteColor];
+        label.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.82];
+        label.textAlignment = NSTextAlignmentCenter;
+        label.layer.cornerRadius = 8; label.clipsToBounds = YES;
+        label.numberOfLines = 1;
+        [label sizeToFit];
+        CGRect f = label.frame; f.size.width += 24; f.size.height += 12;
+        f.origin.x = (vc.view.bounds.size.width - f.size.width)/2;
+        f.origin.y = vc.view.bounds.size.height - f.size.height - 80;
+        label.frame = f;
+        label.alpha = 0;
+        [vc.view addSubview:label];
+        [UIView animateWithDuration:0.2 animations:^{ label.alpha = 1; }];
+        // Tap to undo
+        label.userInteractionEnabled = YES;
+        __block NSTimeInterval undoFrom = from;
+        UITapGestureRecognizer *tap = [[UITapGestureRecognizer alloc] initWithBlock:^(UITapGestureRecognizer *g){
+            AVPlayer *p = QTSponsorFindPlayer();
+            if (p) [p seekToTime:CMTimeMakeWithSeconds(undoFrom, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"undo", @"start": @((long long)(undoFrom*1000))});
+            [label removeFromSuperview];
+        }];
+        // Use old-style target if block API not available (iOS 26 has it, fallback)
+        if (![label respondsToSelector:@selector(addGestureRecognizer:)]) {}
+        [label addGestureRecognizer:tap];
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(3.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [UIView animateWithDuration:0.3 animations:^{ label.alpha = 0; } completion:^(BOOL c){ [label removeFromSuperview]; }];
+        });
+    });
 }
 
 void QTSponsorFetch(NSString *videoID, void (^completion)(NSArray<NSDictionary *> *segments)) {
-    if (!QTSponsorSkipEnabled() || !videoID.length) {
+    if (!videoID.length) {
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
         return;
     }
+    BOOL enabled = QTSponsorSkipEnabled();
+    NSString *prefix = QTSponsorPrefixForVideoID(videoID);
+    if (!enabled) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix ?: @"none", @"result": @"disabled", @"cached": @(0)});
+        if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
+        return;
+    }
+    QTSponsorFetchCount++;
     NSArray *cached = QTSponsorCacheLoad(videoID);
     if (cached) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix ?: @"none", @"result": @"hit", @"cached": @(1), @"segments": @(cached.count)});
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(QTSponsorFilteredSegments(cached)); });
         return;
     }
-    NSString *prefix = QTSponsorPrefixForVideoID(videoID);
     if (!prefix) {
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
         return;
     }
-    // Include only categories we support to reduce payload. Server ignores unknown? Use our 3.
-    // Privacy: we send only prefix, server returns many videos, we filter locally.
+    if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"miss", @"cached": @(0)});
     NSString *urlString = [NSString stringWithFormat:@"%@/api/skipSegments/%@?categories=[\"sponsor\",\"intro\",\"outro\",\"selfpromo\"]", QTSponsorSkipAPIURL, prefix];
     NSURL *url = [NSURL URLWithString:urlString];
     if (!url) {
         if (completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(nil); });
         return;
     }
+    QTSponsorFetchCount++;
+    NSTimeInterval start = CACurrentMediaTime()*1000;
+    if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"start", @"cached": @(0)});
     NSURLSession *session = [NSURLSession sharedSession];
     NSURLSessionDataTask *task = [session dataTaskWithURL:url completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSTimeInterval latency = (CACurrentMediaTime()*1000 - start);
+        NSInteger status = 0;
+        if ([response isKindOfClass:[NSHTTPURLResponse class]]) status = [(NSHTTPURLResponse *)response statusCode];
         NSArray *result = nil;
-        if (data && !error) {
+        NSString *resultStr = @"fail";
+        NSUInteger rawCount = 0, filteredCount = 0;
+        if (data && !error && status == 200) {
             NSArray *json = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
             if ([json isKindOfClass:NSArray.class]) {
                 NSMutableArray *matched = [NSMutableArray array];
@@ -181,15 +314,40 @@ void QTSponsorFetch(NSString *videoID, void (^completion)(NSArray<NSDictionary *
                     NSArray *segs = entry[@"segments"];
                     if (![segs isKindOfClass:NSArray.class]) continue;
                     for (NSDictionary *seg in segs) {
-                        // seg has segment, category — keep as is
                         if (seg[@"segment"] && seg[@"category"]) [matched addObject:seg];
                     }
                 }
                 result = matched;
+                rawCount = matched.count;
                 QTSponsorCacheStore(videoID, matched);
+                resultStr = @"success";
+            } else {
+                resultStr = @"parse_fail";
+            }
+        } else {
+            if (error) {
+                NSInteger code = error.code;
+                NSInteger domain = 0;
+                if ([error.domain isEqualToString:NSURLErrorDomain]) domain = 2;
+                if (QTDEnabled()) QTDEvent(QTDEPlaybackError, @{@"code": @(code), @"domain": @(domain), @"depth": @(0)});
+                resultStr = @"error";
+            } else {
+                resultStr = @"http_fail";
             }
         }
         NSArray *filtered = QTSponsorFilteredSegments(result);
+        filteredCount = filtered.count;
+        if (QTDEnabled()) {
+            QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": resultStr, @"segments": @(rawCount), @"filtered": @(filteredCount), @"latency": @((long long)latency), @"status": @(status), @"cached": @(0)});
+        }
+        // Also log segment details for diagnosis (sample one per fetch to avoid spam)
+        if (QTDEnabled() && filtered.count) {
+            NSDictionary *first = filtered.firstObject;
+            NSArray *seg = first[@"segment"];
+            if (seg.count == 2) {
+                QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"category": first[@"category"] ?: @"unknown", @"start": @((long long)([seg[0] doubleValue]*1000)), @"end": @((long long)([seg[1] doubleValue]*1000)), @"votes": first[@"votes"] ?: @0, @"result": @"sample"});
+            }
+        }
         dispatch_async(dispatch_get_main_queue(), ^{
             if (completion) completion(filtered);
         });
@@ -198,63 +356,143 @@ void QTSponsorFetch(NSString *videoID, void (^completion)(NSArray<NSDictionary *
 }
 
 void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
-    if (!videoID.length || !QTSponsorSkipEnabled()) {
+    NSString *old = QTCurrentVideoID;
+    NSString *prefix = QTSponsorPrefixForVideoID(videoID) ?: @"none";
+    if (!videoID.length) {
         QTCurrentVideoID = nil;
         QTCurrentSegments = nil;
+        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"clear", @"cached": @(0)});
         return;
     }
     QTCurrentVideoID = videoID;
+    if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"notify", @"cached": @(0)});
+    // Log video change with hash prefix (privacy)
+    QTCount(@"sponsorFetch: video notify");
     NSArray *cached = QTSponsorCacheLoad(videoID);
     if (cached) {
         QTCurrentSegments = cached;
+        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"hit", @"segments": @(cached.count), @"filtered": @(QTSponsorFilteredSegments(cached).count), @"cached": @(1)});
         return;
     }
+    // Fetch async
     QTSponsorFetch(videoID, ^(NSArray<NSDictionary *> *segments) {
-        // Only keep if still same video
         if ([QTCurrentVideoID isEqualToString:videoID]) {
             QTCurrentSegments = segments ?: @[];
+            if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"fetched", @"segments": @(segments.count), @"cached": @(0)});
+        } else {
+            if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"stale", @"cached": @(0)});
         }
     });
+    // Start timer if not already
+    if (!QTSponsorTimer && QTSponsorSkipEnabled()) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (QTSponsorTimer) return;
+            QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 target:[NSBlockOperation blockOperationWithBlock:^{
+                if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
+                AVPlayer *player = QTSponsorFindPlayer();
+                if (!player) {
+                    static NSTimeInterval lastNoPlayerLog = 0;
+                    if (QTDEnabled() && CACurrentMediaTime() - lastNoPlayerLog > 15.0) {
+                        QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none"});
+                        lastNoPlayerLog = CACurrentMediaTime();
+                    }
+                    return;
+                }
+                NSTimeInterval cur = CMTimeGetSeconds(player.currentTime);
+                if (!isfinite(cur)) return;
+                NSNumber *target = QTSponsorSeekTargetForTime(cur, QTCurrentSegments);
+                if (target) {
+                    NSTimeInterval to = [target doubleValue];
+                    [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                    QTSponsorSkippedTotal++;
+                    QTCount(@"sponsorSkip: segment skipped");
+                    QTSponsorShowUndoToast(cur, to);
+                    if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+                }
+            }] selector:@selector(main) object:nil];
+            // NSTimer with block not available on older SDK, fallback to selector
+            // Actually use timerWithTimeInterval:repeats:block:
+            [QTSponsorTimer invalidate];
+            QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
+                if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
+                AVPlayer *player = QTSponsorFindPlayer();
+                if (!player) return;
+                NSTimeInterval cur = CMTimeGetSeconds(player.currentTime);
+                if (!isfinite(cur)) return;
+                NSNumber *target = QTSponsorSeekTargetForTime(cur, QTCurrentSegments);
+                if (target) {
+                    NSTimeInterval to = [target doubleValue];
+                    [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                    QTSponsorSkippedTotal++;
+                    QTCount(@"sponsorSkip: segment skipped");
+                    QTSponsorShowUndoToast(cur, to);
+                    if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+                }
+            }];
+        });
+    }
 }
 
 // Minimal player integration: try to hook AVPlayer periodic time.
-// YouTube uses YTPlayerViewController with AVPlayer. We hook a common private selector if available,
-// otherwise we expose QTSponsorSeekTargetForTime for other hooks to call.
 __attribute__((unused)) static void QTSponsorTrySeek(NSTimeInterval currentTime) {
     NSNumber *target = QTSponsorSeekTargetForTime(currentTime, QTCurrentSegments);
     if (!target) return;
-    // Find player — try to find YT app's active player via notification or class.
-    // We don't bundle a hard hook here to keep it safe: count, log, and attempt seek if we can find an AVPlayer.
+    AVPlayer *player = QTSponsorFindPlayer();
+    if (!player) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none"});
+        return;
+    }
     QTSponsorSkippedTotal++;
     QTCount(@"sponsorSkip: segment skipped");
-    if (QTDEnabled()) QTDEvent(QTDEHook, @{@"class":@"SponsorSkip", @"selector":@"skip", @"installed":@(YES), @"target": target});
-    // Show undo toast via settings controller if visible? For now log.
-    // Actual seek is done by the hook in QTSponsorInstall if player is found.
+    if (QTDEnabled()) QTDEvent(QTDEHook, @{@"class":@"SponsorSkip", @"selector":@"skip", @"installed":@(YES)});
+    [player seekToTime:CMTimeMakeWithSeconds([target doubleValue], NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+    QTSponsorShowUndoToast(currentTime, [target doubleValue]);
 }
 
 void QTSponsorInstall(void) {
     if (!QTSponsorQueue) QTSponsorQueue = dispatch_queue_create("com.quiettube.sponsorskip", DISPATCH_QUEUE_SERIAL);
-    // Watch for videoID changes via hook on YTWatchController or YTPlayerViewController if available.
-    // Safe no-op if classes not found — feature stays dormant until videoID is notified externally.
-    // Hook AVPlayer's seek to detect user seeks (to add grace period)
+    QTCount(@"sponsorSkip: installed");
+    if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
     QTHook(@"AVPlayer", @"seekToTime:", @"v@Q", ^id(IMP old, SEL sel) {
         return ^(id obj, long long time) {
             QTLastUserSeek = CACurrentMediaTime();
+            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"userskip", @"cached": @(1)});
             ((void (*)(id,SEL,long long))old)(obj, sel, time);
         };
     });
-    // Also hook seekToTime:toleranceBefore:toleranceAfter: if exists
-    // We don't force a timer here — the host app's player will call us when time updates.
-    // For testing, expose that QTSponsorSeekTargetForTime is the decision point.
-    QTCount(@"sponsorSkip: installed");
+    // Hook YT's videoID change if possible: YTWatchController or YTIPlayerResponse
+    // We add observer for videoID via method hook on YTPlayerViewController if available
+    Class ytc = NSClassFromString(@"YTPlayerViewController");
+    if (ytc) {
+        QTHook(@"YTPlayerViewController", @"loadWithPlayerResponse:", @"v@@", ^id(IMP old, SEL sel){
+            return ^(id obj, id response){
+                ((void (*)(id,SEL,id))old)(obj, sel, response);
+                // Try to extract videoID from response via KVC
+                NSString *vid = nil;
+                @try { vid = [response valueForKey:@"videoId"]; } @catch (__unused NSException *e) {}
+                if (!vid) @try { vid = [response valueForKey:@"videoID"]; } @catch (__unused NSException *e) {}
+                if (vid.length) QTSponsorNotifyVideoIDChanged(vid);
+                if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": vid ? (QTSponsorPrefixForVideoID(vid) ?: @"none") : @"none", @"result": @"yt_load", @"cached": @(0)});
+            };
+        });
+    }
+    // Also observe notification for video change as fallback
+    [[NSNotificationCenter defaultCenter] addObserverForName:@"YTPlayerViewControllerDidChangeVideoNotification" object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *n){
+        NSString *vid = n.userInfo[@"videoId"] ?: n.userInfo[@"videoID"];
+        if (vid.length) QTSponsorNotifyVideoIDChanged(vid);
+    }];
 }
 
 NSString *QTSponsorReport(void) {
-    return [NSString stringWithFormat:@"SponsorSkip: enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu cache=%lu\n",
+    return [NSString stringWithFormat:@"SponsorSkip: enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu fetches=%lu cacheHits=%lu currentPrefix=%@ segments=%lu timer=%@\nDiagnostics: 9=fetch 10=skip 11=cache. Enable Enhanced logging to capture fetch latency, prefix, filtered counts, skip targets, noplayer/grace, undo.\n",
             QTSponsorSkipEnabled()?@"on":@"off",
             QTSponsorSkipIntroOutroEnabled()?@"on":@"off",
             QTSponsorSkipSelfPromoEnabled()?@"on":@"off",
             (unsigned long)QTSponsorSkippedTotal,
-            (unsigned long)QTSponsorMemoryCache.count];
+            (unsigned long)QTSponsorFetchCount,
+            (unsigned long)QTSponsorCacheHits,
+            QTCurrentVideoID ? (QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none") : @"none",
+            (unsigned long)QTCurrentSegments.count,
+            QTSponsorTimer ? @"on" : @"off"];
 }
 NSUInteger QTSponsorSkippedCount(void) { return QTSponsorSkippedTotal; }

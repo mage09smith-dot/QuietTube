@@ -31,7 +31,8 @@ static BOOL QTDIdentifier(NSString *value, BOOL selector) {
 NSDictionary *QTDSanitize(NSDictionary *fields) {
     NSMutableDictionary *safe=[NSMutableDictionary dictionary];
     if (![fields isKindOfClass:NSDictionary.class]) return safe;
-    for (NSString *key in @[@"count",@"index",@"bytes",@"mask",@"ad",@"scope",@"code",@"depth",@"domain",@"phase",@"slot",@"installed",@"removed",@"kept"]) {
+    for (NSString *key in @[@"count",@"index",@"bytes",@"mask",@"ad",@"scope",@"code",@"depth",@"domain",@"phase",@"slot",@"installed",@"removed",@"kept",
+                             @"segments",@"filtered",@"latency",@"status",@"cached",@"skipped",@"votes",@"start",@"end",@"duration"]) {
         id value=fields[key];
         if ([value isKindOfClass:NSNumber.class] && isfinite([value doubleValue]) && fabs([value doubleValue])<=9007199254740991.0) safe[key]=@([value longLongValue]);
     }
@@ -41,6 +42,12 @@ NSDictionary *QTDSanitize(NSDictionary *fields) {
         if ([key hasSuffix:@"Class"] || [key isEqualToString:@"class"]) {
             if (![value hasPrefix:@"YT"] && ![value hasPrefix:@"ML"]) continue;
         }
+        safe[key]=[value copy];
+    }
+    for (NSString *key in @[@"prefix",@"category",@"result"]) {
+        id value=fields[key];
+        if (![value isKindOfClass:NSString.class] || value.length>32) continue;
+        if (!QTDIdentifier(value, NO)) continue;
         safe[key]=[value copy];
     }
     return safe;
@@ -241,7 +248,7 @@ void QTDExport(void (^completion)(NSString *)) {
     @synchronized(QTDLock) {
         NSUInteger queueDrops=QTDQueueDrops, rateDrops=QTDRateDrops; BOOL enabled=QTDRecording; BOOL master=QTEnhancedEnabled();
         dispatch_async(QTDQueue, ^{
-            NSMutableString *report=[NSMutableString stringWithFormat:@"QuietTube 1.2.0 enhanced diagnostics\nRecording: %@ (master %@). Queue drops: %lu. Rate drops: %lu.\nLocal only; review identifiers before sharing. Not all events are observed.\nEvents: 0=start,1=stop,2=app,3=playback error,4=player,5=mutation,6=feed boundary,7=element,8=hook.\nError domains: 0=other,1=YouTube,2=URL,3=Cocoa,4=OSStatus.\nApp phase: 0=active,1=background,2=memory warning,3=termination notification (not guaranteed).\nPlayer phase: 0=factory invoked,1=no-op supplied,2=session safety pause,3=native fallback.\nMutation slots follow existing report: collapse-start/end,layout,apply,insert-section,insert-content,replace-section/content,insert-notification.\nFeed phase: 0=presentation input,1=pre-insert,2=insert returned. Element mask is a heuristic, not ad proof; ad=-1 means marker unreadable.\nEnhanced logger: single master toggle, 3 files x 256 KiB, 7-day window. Auto-rotates, no upload.\n",enabled?@"yes":@"no",master?@"on":@"off",(unsigned long)queueDrops,(unsigned long)rateDrops];
+            NSMutableString *report=[NSMutableString stringWithFormat:@"QuietTube 1.3.0-exp diagnostics\nRecording: %@ (master %@). Queue drops: %lu. Rate drops: %lu.\nLocal only; review identifiers before sharing. Not all events are observed.\nEvents: 0=start,1=stop,2=app,3=playback error,4=player,5=mutation,6=feed boundary,7=element,8=hook,9=sponsorFetch,10=sponsorSkip,11=sponsorCache.\nSponsorFetch: prefix=4-char hash, segments=raw, filtered=after category, latency=ms, status=HTTP, cached=0/1, result=hit/miss/success/fail.\nSponsorSkip: prefix, segments, filtered, start/end=ms, category, votes, skipped=total, result=skip/noskip/grace/disabled.\nSponsorCache: prefix, segments, cached, result=store/load/clear/evict, status.\nError domains: 0=other,1=YouTube,2=URL,3=Cocoa,4=OSStatus.\nApp phase: 0=active,1=background,2=memory warning,3=termination notification (not guaranteed).\nPlayer phase: 0=factory invoked,1=no-op supplied,2=session safety pause,3=native fallback.\nMutation slots follow existing report: collapse-start/end,layout,apply,insert-section,insert-content,replace-section/content,insert-notification.\nFeed phase: 0=presentation input,1=pre-insert,2=insert returned. Element mask is a heuristic, not ad proof; ad=-1 means marker unreadable.\nEnhanced logger: single master toggle, 3 files x 256 KiB, 7-day window. Auto-rotates, no upload.\n",enabled?@"yes":@"no",master?@"on":@"off",(unsigned long)queueDrops,(unsigned long)rateDrops];
             @try {
                 if (QTDDirectory) {
                     QTDPrune();

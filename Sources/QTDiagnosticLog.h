@@ -5,7 +5,8 @@
 // Files remain bounded (3 x 256 KiB, 7-day) and local only.
 typedef NS_ENUM(NSUInteger, QTDiagnosticEvent) {
     QTDEStart, QTDEStop, QTDEApp, QTDEPlaybackError, QTDEPlayer,
-    QTDEMutation, QTDEFeedBoundary, QTDEElement, QTDEHook, QTDECount
+    QTDEMutation, QTDEFeedBoundary, QTDEElement, QTDEHook,
+    QTDESponsorFetch, QTDESponsorSkip, QTDESponsorCache, QTDECount
 };
 void QTDConfigure(NSString *directory);
 BOOL QTDEnabled(void);

@@ -28,7 +28,7 @@ def publish(env, root=ROOT, run=subprocess.run):
         prerelease=choice=='true'
     if not re.fullmatch(r'[0-9a-fA-F]{40}',commit):raise ValueError('Invalid source commit')
     version=(root/'VERSION').read_text().strip()
-    if not re.fullmatch(r'\d+\.\d+\.\d+',version):raise ValueError('Invalid version')
+    if not re.fullmatch(r'\d+\.\d+\.\d+([\-\.][0-9A-Za-z\-\.]+)*',version):raise ValueError('Invalid version')
     directory=root/'artifacts'
     lib=directory/'QuietTube.dylib'
     if not lib.is_file() or lib.is_symlink():raise ValueError('Expected compiled dylib missing')

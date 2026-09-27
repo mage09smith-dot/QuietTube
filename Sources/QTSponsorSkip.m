@@ -211,8 +211,9 @@ static NSString *QTSponsorExtractVideoID(void) {
         windows = [UIApplication sharedApplication].windows;
     }
     for (UIWindow *window in windows) {
+        if (![window isKindOfClass:[UIWindow class]]) continue;
         NSMutableArray *queue = [NSMutableArray array];
-        if (window.rootViewController) [queue addObject:window.rootViewController];
+        @try { if (window.rootViewController) [queue addObject:window.rootViewController]; } @catch (__unused NSException *e) {}
         // Also add window itself for KVC
         NSMutableArray *seen = [NSMutableArray array];
         while (queue.count) {
@@ -321,8 +322,10 @@ static AVPlayer *QTSponsorFindPlayer(void) {
                 AVPlayerLayer *pl = (AVPlayerLayer *)view.layer;
                 if (pl.player) return pl.player;
             }
-            // 1b) Sublayers may contain AVPlayerLayer (YouTube embeds)
-            for (CALayer *sub in view.layer.sublayers) {
+            // 1b) Sublayers may contain AVPlayerLayer (YouTube embeds) — guarded
+            NSArray *subs = nil;
+            @try { subs = view.layer.sublayers; } @catch (__unused NSException *e) { subs = nil; }
+            for (CALayer *sub in subs) {
                 if ([sub isKindOfClass:[AVPlayerLayer class]]) {
                     AVPlayer *pl = ((AVPlayerLayer *)sub).player;
                     if (pl) return pl;
@@ -576,7 +579,7 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     // Try candidate names for diagnostics (sample)
     if (QTDEnabled()) {
         NSString *cn = NSStringFromClass(scrubber.class);
-        QTDEvent(QTDESponsorCache, @{@"result": @"green_found", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"segments": @(segments.count), @"cached": @(scrubber.bounds.size.width)});
+        @try { QTDEvent(QTDESponsorCache, @{@"result": @"green_found", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"segments": @(segments.count), @"cached": @((int)scrubber.bounds.size.width)}); } @catch (__unused NSException *e) {}
         (void)cn;
     }
     // Need video duration - try player first, then videoDuration from API, then 1:18 for your test video fallback
@@ -600,8 +603,6 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (!isfinite(duration) || duration < 1) duration = 600;
     // Ensure scrubber has layout
     if (scrubber.bounds.size.width < 10) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_zero_width", @"segments": @(segments.count)}); return; }
-    QTSponsorClearGreenMarks();
-    if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
     // Safety: validate scrubber is UIView and not array, and handle UIVisualEffectView
     if (![scrubber isKindOfClass:[UIView class]]) {
         if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_type", @"segments": @(segments.count)});
@@ -627,7 +628,7 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     UIView *container = scrubber.superview;
     if (!container || ![container isKindOfClass:[UIView class]]) container = scrubber;
     CGRect scrubFrameInContainer = [scrubber convertRect:scrubber.bounds toView:container];
-    if (!isfinite(scrubFrameInContainer.origin.x) || !isfinite(scrubFrameInContainer.size.width) || scrubFrameInContainer.size.width < 10) {
+    if (!isfinite(scrubFrameInContainer.origin.x) || !isfinite(scrubFrameInContainer.size.width) || scrubFrameInContainer.size.width < 10 || !isfinite(scrubFrameInContainer.origin.y)) {
         if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_frame", @"segments": @(segments.count)});
         return;
     }

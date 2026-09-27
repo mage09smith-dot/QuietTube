@@ -699,8 +699,7 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     container.masksToBounds = NO;
     container.zPosition = 999;
     container.name = @"qt.ss"; // short, non-obvious
-    // Ensure container resizes with scrubber (no layout pass)
-    container.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    // No autoresizingMask on CALayer (UIView only) — we update frame on layout/orientation observer for smooth fullscreen/minimize
     @try {
         [CATransaction begin];
         [CATransaction setDisableActions:YES];

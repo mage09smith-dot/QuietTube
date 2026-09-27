@@ -90,7 +90,9 @@
     "tests/test_trace.py": "325c22ed4be7a0a6dbf78a3c05eabf5939c57fa934da367512f9bdfd02e90162",
     "Sources/QTSponsorSkip.h": "88e496d16ccd1555395a9958b4112b1e4f2978de44b89ed9cfc5686d7eda2e48",
     "Sources/QTSponsorSkip.m": "533de99e9865321424e59a459386d1c027c772d6944b5b31a140ed629cf29a7f",
-    ".gitattributes": "1e909dcd57d435627af3f46aeddc5ce31396c7a4b9ed7292fb25587989a3f6c9"
+    ".gitattributes": "1e909dcd57d435627af3f46aeddc5ce31396c7a4b9ed7292fb25587989a3f6c9",
+    ".github/workflows/build-exp.yml": "83e5e2e34267eba869e0ae8d3a9da2f6ed32ff353c6643bd5e51e780a55d9688",
+    ".github/workflows/dylib-exp.yml": "e4a8448362482f0cfc1103bfba7fc60c7ea3dee0aec9ed8353b7a07a4b0fbd4d"
   },
   "forbidden_legacy_files": [
     ".github/workflows/source-checks.yml",
@@ -133,5 +135,5 @@
     "QTCore.m": "ff2bbc16"
   },
   "sourceCommit": "533de99e",
-  "description": "Exp31: cleaned \u2014 only 2 build flows (IPA+dylib) like upstream, dynamic IPA_PATH from VERSION, fixed exp.29 hard-coded publish mismatch, ytkace-port signature-agnostic double-time"
+  "description": "Exp31: restored 4-flow (IPA+dylib + experimental) with dynamic IPA_PATH, fixes exp.29 hardcode, ytkace-port"
 }

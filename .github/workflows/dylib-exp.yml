@@ -1,5 +1,5 @@
 name: Build QuietTube dylib — EXPERIMENTAL SponsorSkip
-run-name: QuietTube 1.3.0-exp — dylib (experimental)
+run-name: QuietTube 1.3.0-exp.31 — dylib (experimental)
 on:
   workflow_dispatch:
     inputs:
@@ -32,9 +32,9 @@ jobs:
           python-version: '3.12'
       - name: Verify sources and run regression tests
         run: bash scripts/check.sh
-      - name: Compile the native tweak (experimental)
+      - name: Compile the native tweak
         run: bash scripts/build.sh
-      - name: Publish EXPERIMENTAL dylib
+      - name: Publish standalone dylib and show download link
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_KIND: dylib
@@ -48,5 +48,5 @@ jobs:
       - name: Explain failure
         if: failure()
         run: |
-          echo '## EXPERIMENTAL dylib failed' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Experimental branch may fail. Stable dylib on main is not affected.' >> "$GITHUB_STEP_SUMMARY"
+          echo '## Dylib publication failed — no successful download is confirmed' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Open the failed step. Check Releases for an incomplete draft before rebuilding.' >> "$GITHUB_STEP_SUMMARY"

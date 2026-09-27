@@ -1,5 +1,5 @@
 name: Build QuietTube IPA
-run-name: QuietTube 1.2.0 — user-provided base
+run-name: QuietTube 1.3.0-exp.31 — user-provided base
 on:
   workflow_dispatch:
     inputs:
@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: write
     env:
-      IPA_PATH: artifacts/QuietTube-1.2.0-21.38.2.ipa
+      VERSION_FILE: VERSION
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -35,6 +35,8 @@ jobs:
         run: bash scripts/check.sh
       - name: Compile the native tweak
         run: bash scripts/build.sh
+      - name: Set IPA path from VERSION
+        run: echo "IPA_PATH=artifacts/QuietTube-$(cat VERSION)-21.38.2.ipa" >> $GITHUB_ENV
       - name: Download and validate user-provided base
         timeout-minutes: 7
         env:

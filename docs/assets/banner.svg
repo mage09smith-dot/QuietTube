@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="400" viewBox="0 0 1280 400" role="img" aria-labelledby="title desc">
+  <title id="title">QuietTube</title>
+  <desc id="desc">A printed-label style wordmark on warm paper, with charcoal lettering and a short vermilion rule. A YouTube tweak for iOS.</desc>
+  <rect width="1280" height="400" fill="#F1EBDD"/>
+  <rect x="54" y="104" width="12" height="169" fill="#C64936"/>
+  <g fill="#20201E" font-family="Arial, Helvetica, Liberation Sans, sans-serif">
+    <text x="105" y="228" font-size="152" font-weight="700" letter-spacing="-7">QuietTube</text>
+    <text x="112" y="294" font-size="24">A YouTube tweak for iOS.</text>
+  </g>
+</svg>

@@ -68,7 +68,7 @@ This is separate from YouTube ads. SponsorSkip uses community data from [Sponsor
 
 | Control | What it does |
 | --- | --- |
-| **SponsorSkip** | Master. Off by default (ON by default in 1.3.0-exp.23+ testing builds). When on, auto-skips `sponsor` segments. Hash-private: only 4-char prefix leaves device. Shows 3s Undo and green marks on the scrubber for the next video. |
+| **SponsorSkip** | Master. Off by default (ON by default in 1.3.0-exp.24+ testing builds). When on, auto-skips `sponsor` segments. Hash-private: only 4-char prefix leaves device. Shows 3s Undo and green marks on the scrubber for the next video. |
 | **Also skip Intro / Outro** | Also skip `intro` and `outro` when master is on. Disabled until master is on. |
 | **Also skip Self-promo** | Also skip unpaid `selfpromo` when master is on. Disabled until master is on. |
 | **⚠️ Community data — not always correct** | Always visible, not a toggle. Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as `sponsor`. This has been abused to censor content. If a video jumps oddly, turn SponsorSkip off and replay. Review/vote at `sponsor.ajay.app`. |

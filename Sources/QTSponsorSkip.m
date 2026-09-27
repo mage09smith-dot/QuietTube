@@ -489,14 +489,54 @@ static BOOL QTSponsorYTSeek(NSTimeInterval to) {
 }
 
 
-// Green scrubber marks - find YT's progress bar and add thin green overlays for sponsor segments
-static NSMutableArray<UIView *> *QTSponsorGreenMarks;
+// Green scrubber marks - native CAShapeLayer (undetectable, smooth minimizing/transition)
+static NSMutableArray<CALayer *> *QTSponsorGreenLayers;
+static CALayer *QTSponsorContainerLayer;
+static __weak UIView *QTCachedScrubber;
+static NSMutableArray<UIView *> *QTSponsorGreenMarks; // legacy fallback (cleared)
+static UIColor *QTSponsorColorForCategory(NSString *cat) {
+    if ([cat isEqualToString:@"intro"]) return [UIColor colorWithRed:0.24 green:0.58 blue:0.96 alpha:0.95]; // blue
+    if ([cat isEqualToString:@"outro"]) return [UIColor colorWithRed:0.96 green:0.78 blue:0.18 alpha:0.95]; // yellow
+    if ([cat isEqualToString:@"selfpromo"]) return [UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.85];
+    return [UIColor colorWithRed:0.10 green:0.78 blue:0.36 alpha:1.0]; // sponsor green default
+}
 static void QTSponsorClearGreenMarks(void) {
-    for (UIView *v in QTSponsorGreenMarks) [v removeFromSuperview];
-    [QTSponsorGreenMarks removeAllObjects];
+    // Remove native container layer (smooth, no AutoLayout)
+    @try {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [QTSponsorContainerLayer removeFromSuperlayer];
+        QTSponsorContainerLayer = nil;
+        for (CALayer *l in QTSponsorGreenLayers) [l removeFromSuperlayer];
+        [QTSponsorGreenLayers removeAllObjects];
+        for (UIView *v in QTSponsorGreenMarks) [v removeFromSuperview];
+        [QTSponsorGreenMarks removeAllObjects];
+        [CATransaction commit];
+    } @catch (__unused NSException *e) {
+        QTSponsorContainerLayer = nil;
+        QTSponsorGreenLayers = nil;
+        QTSponsorGreenMarks = nil;
+    }
+    QTCachedScrubber = nil;
 }
 static UIView *QTSponsorFindScrubber(UIView *root) {
     if (!root) return nil;
+    // Cached scrubber fast path — avoids 800-view BFS every 5s (jank)
+    @try {
+        if (QTCachedScrubber && QTCachedScrubber.window && !QTCachedScrubber.hidden && QTCachedScrubber.alpha > 0.01) {
+            CGFloat cw = QTCachedScrubber.bounds.size.width;
+            CGFloat ch = QTCachedScrubber.bounds.size.height;
+            if (cw > 10 && ch > 1 && ch < 30) {
+                // Verify still in hierarchy and not inside Settings
+                BOOL isSettings = NO;
+                @try {
+                    UIResponder *r = QTCachedScrubber.nextResponder;
+                    while (r) { if ([NSStringFromClass(r.class) containsString:@"Settings"]) { isSettings = YES; break; } r = r.nextResponder; }
+                } @catch (__unused NSException *e) {}
+                if (!isSettings) return QTCachedScrubber;
+            }
+        }
+    } @catch (__unused NSException *e) {}
     NSMutableArray *queue = [NSMutableArray arrayWithObject:root];
     UIView *best = nil;
     CGFloat bestWidth = 0;
@@ -552,8 +592,9 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
         @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
         if (queue.count > 800) break;
     }
-    if (best) return best;
-    return thinBarFallback;
+    UIView *result = best ? best : thinBarFallback;
+    if (result) QTCachedScrubber = result;
+    return result;
 }
 static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (!segments.count) { QTSponsorClearGreenMarks(); return; }
@@ -644,51 +685,69 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     }
     @try { QTSponsorClearGreenMarks(); } @catch (__unused NSException *e) { QTSponsorGreenMarks = [NSMutableArray array]; }
     if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
-    // Use superview as container so we don't corrupt scrubber's private subview/layer layout (fixes YTSingleVideoTime sublayers crash)
-    UIView *container = scrubber.superview;
-    if (!container || ![container isKindOfClass:[UIView class]]) container = scrubber;
-    CGRect scrubFrameInContainer = [scrubber convertRect:scrubber.bounds toView:container];
-    if (!isfinite(scrubFrameInContainer.origin.x) || !isfinite(scrubFrameInContainer.size.width) || scrubFrameInContainer.size.width < 10 || !isfinite(scrubFrameInContainer.origin.y)) {
-        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_frame", @"segments": @(segments.count)});
-        return;
-    }
+    // Native layer: attach 1 container CAShapeLayer to scrubber.layer (no AutoLayout, invisible to YT server)
+    @try { QTSponsorClearGreenMarks(); } @catch (__unused NSException *e) { QTSponsorGreenLayers = [NSMutableArray array]; QTSponsorGreenMarks = [NSMutableArray array]; }
+    if (!QTSponsorGreenLayers) QTSponsorGreenLayers = [NSMutableArray array];
+    if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
+    // Validate scrubber still
+    if (![scrubber isKindOfClass:[UIView class]]) return;
+    CALayer *scrubLayer = scrubber.layer;
+    if (!scrubLayer) return;
+    // Container layer frame = scrubber.bounds (auto-resizes with scrubber, smooth minimize/fullscreen)
+    CALayer *container = [CALayer layer];
+    container.frame = scrubber.bounds;
+    container.masksToBounds = NO;
+    container.zPosition = 999;
+    container.name = @"qt.ss"; // short, non-obvious
+    // Ensure container resizes with scrubber (no layout pass)
+    container.autoresizingMask = kCALayerWidthSizable | kCALayerHeightSizable;
+    @try {
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        [scrubLayer addSublayer:container];
+        QTSponsorContainerLayer = container;
+        [CATransaction commit];
+    } @catch (__unused NSException *e) { return; }
+    // Draw each segment as lightweight CAShapeLayer (no UIView, no shadow, 1 draw)
     for (id raw in segments) {
         if (![raw isKindOfClass:[NSDictionary class]]) continue;
         NSDictionary *s = (NSDictionary *)raw;
         NSArray *seg = s[@"segment"];
         if (![seg isKindOfClass:[NSArray class]] || seg.count!=2) continue;
+        // Respect category enable (sponsor always, intro/outro/selfPromo gated)
+        NSString *cat = s[@"category"] ?: @"sponsor";
+        if (!QTSponsorCategoryEnabled(cat)) continue;
         @try {
             NSTimeInterval start = [seg[0] doubleValue];
             NSTimeInterval end = [seg[1] doubleValue];
             if (!isfinite(start) || !isfinite(end) || end <= start) continue;
-            CGFloat w = 0; CGFloat h = 0;
-            @try { w = scrubFrameInContainer.size.width; h = scrubFrameInContainer.size.height; } @catch (__unused NSException *e) { continue; }
+            CGFloat w = scrubber.bounds.size.width;
+            CGFloat h = scrubber.bounds.size.height;
             if (!isfinite(w) || !isfinite(h) || w < 10 || h < 1) continue;
-            CGFloat x = scrubFrameInContainer.origin.x + (start / duration) * w;
+            CGFloat x = (start / duration) * w;
             CGFloat sw = ((end - start) / duration) * w;
             if (!isfinite(x) || !isfinite(sw)) continue;
-            if (sw < 2) sw = 2;
-            if (x < scrubFrameInContainer.origin.x) x = scrubFrameInContainer.origin.x;
-            if (x + sw > scrubFrameInContainer.origin.x + w) sw = (scrubFrameInContainer.origin.x + w) - x;
+            if (sw < 1.5) sw = 1.5;
+            if (x < 0) x = 0;
+            if (x + sw > w) sw = w - x;
             if (sw <= 0) continue;
-            // Clamp height to 3-4pt green line, centered vertically
             CGFloat mh = h;
-            if (mh > 8) mh = 4;
-            CGFloat my = scrubFrameInContainer.origin.y + (h - mh)/2;
-            UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, my, sw, mh)];
-            if (!mark) continue;
-            mark.backgroundColor = [UIColor colorWithRed:0.10 green:0.78 blue:0.36 alpha:1.0];
-            mark.layer.cornerRadius = 1.2;
-            mark.clipsToBounds = YES;
-            mark.userInteractionEnabled = NO;
-            mark.tag = 0x5B1A; // sponsor mark
-            mark.layer.zPosition = 1000;
-            mark.layer.masksToBounds = NO;
-            @try { [container addSubview:mark]; [container bringSubviewToFront:mark]; } @catch (NSException *e) {
-                if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
-                continue;
-            }
-            @try { [QTSponsorGreenMarks addObject:mark]; } @catch (__unused NSException *e) {}
+            if (mh > 6) mh = 3.5;
+            CGFloat my = (h - mh)/2;
+            CALayer *mark = [CALayer layer];
+            mark.frame = CGRectMake(x, my, sw, mh);
+            mark.backgroundColor = QTSponsorColorForCategory(cat).CGColor;
+            mark.cornerRadius = 1.2;
+            mark.masksToBounds = YES;
+            mark.zPosition = 1000;
+            // No shadow/border — keep it feather-light for 120hz
+            @try {
+                [CATransaction begin];
+                [CATransaction setDisableActions:YES];
+                [container addSublayer:mark];
+                [CATransaction commit];
+                [QTSponsorGreenLayers addObject:mark];
+            } @catch (__unused NSException *e) { continue; }
         } @catch (__unused NSException *e) { continue; }
     }
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"green", @"segments": @(segments.count)});

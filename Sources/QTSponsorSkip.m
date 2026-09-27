@@ -510,19 +510,16 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
         if (![v respondsToSelector:@selector(subviews)] || ![v respondsToSelector:@selector(bounds)]) continue;
         NSString *name = NSStringFromClass(v.class);
         // Exclude system chrome that crashes when adding subviews
-        // Exclude any view that is inside Quiet controls / Settings (prevents green bleeding into menu)
+        // Skip any view inside Settings/Quiet controls responder chain (prevents green on Troubleshooting)
         @try {
             UIResponder *r = v.nextResponder;
             while (r) {
                 NSString *rn = NSStringFromClass(r.class);
-                if ([rn containsString:@"Settings"] || [rn containsString:@"Troubleshooting"] || [rn containsString:@"QuietTube"]) { goto skipView; }
+                if ([rn containsString:@"Settings"] || [rn containsString:@"Troubleshooting"] || [rn containsString:@"QuietTube"]) { @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {} continue; }
                 r = r.nextResponder;
             }
         } @catch (__unused NSException *e) {}
         if ([name containsString:@"ShadowView"] || [name containsString:@"BarBackground"] || [name containsString:@"VisualEffect"] || [name containsString:@"Backdrop"] || [name containsString:@"_UIBar"] || [name containsString:@"UINavigationBar"] || [name containsString:@"UIBarBackground"]) {
-            @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
-            continue;
-            skipView:;
             @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
             continue;
         }
@@ -533,7 +530,7 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
         // Require visible height >1 to avoid picking 0-height layout guides
         BOOL hasValidFrame = NO;
         @try { hasValidFrame = v.bounds.size.width > 10 && v.bounds.size.height > 1 && v.bounds.size.height < 30; } @catch (__unused NSException *e) { hasValidFrame = NO; }
-        // Exclude time labels, buttons, and settings/menu views that bleed green into Quiet controls
+        // Exclude time labels, buttons, and Settings/Quiet controls to prevent green bleeding into menu
         if ([name containsString:@"Time"] || [name containsString:@"Label"] || [name containsString:@"Button"] || [name containsString:@"Image"] || [name containsString:@"Settings"] || [name containsString:@"Menu"] || [name containsString:@"Troubleshooting"] || [name containsString:@"YTSettings"] || [name containsString:@"ListView"] ) {
             @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
             continue;
@@ -562,9 +559,8 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (!segments.count) { QTSponsorClearGreenMarks(); return; }
     if (![NSThread isMainThread]) { dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(segments); }); return; }
     UIWindow *win = nil;
-    // Prefer player window (largest window, not settings sheet) — prevents menu bleed
     if (@available(iOS 15.0, *)) {
-        UIWindow *largest = nil; CGFloat maxW=0;
+        UIWindow *largest = nil; CGFloat maxW = 0;
         for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
             if ([scene isKindOfClass:[UIWindowScene class]]) {
                 for (UIWindow *w in ((UIWindowScene *)scene).windows) {
@@ -573,7 +569,14 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
             }
         }
         win = largest;
-        if (!win) for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) if ([scene isKindOfClass:[UIWindowScene class]]) { UIWindowScene *ws=(UIWindowScene*)scene; if(ws.windows.firstObject) {win=ws.windows.firstObject; break; }}
+        if (!win) {
+            for (UIScene *scene in [UIApplication sharedApplication].connectedScenes) {
+                if ([scene isKindOfClass:[UIWindowScene class]]) {
+                    UIWindowScene *ws = (UIWindowScene *)scene;
+                    if (ws.windows.firstObject) { win = ws.windows.firstObject; break; }
+                }
+            }
+        }
     }
     if (!win) win = [UIApplication sharedApplication].windows.firstObject;
     if (!win) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_no_window", @"segments": @(segments.count)}); return; }
@@ -681,9 +684,6 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
             mark.tag = 0x5B1A; // sponsor mark
             mark.layer.zPosition = 1000;
             mark.layer.masksToBounds = NO;
-            mark.layer.shadowColor = [UIColor blackColor].CGColor;
-            mark.layer.shadowOpacity = 0.15;
-            mark.layer.shadowRadius = 0.5;
             @try { [container addSubview:mark]; [container bringSubviewToFront:mark]; } @catch (NSException *e) {
                 if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
                 continue;
@@ -876,26 +876,25 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
                     if (isfinite(cur)) haveTime = YES;
                 }
                 if (!haveTime) {
-                    // Try HAMPlayer / YTPlayer via GIMMe and via view KVC including HAMPlayer
+                    // HAMPlayer / GIMMe first (YouTube 21.38.2 uses HAMPlayer not AVPlayer)
                     @try {
                         Class gimme = NSClassFromString(@"GIMMe");
                         if (gimme) {
                             id cont = nil;
                             @try { cont = [gimme valueForKey:@"sharedInstance"]; } @catch (__unused NSException *e) {}
                             if (!cont) @try { cont = [gimme performSelector:NSSelectorFromString(@"sharedInstance")]; } @catch (__unused NSException *e) {}
-                            for (NSString *k in @[@"player", @"hamPlayer", @"activePlayer", @"ytPlayer", @"singleVideoController"]) {
+                            if (!cont) @try { cont = [gimme performSelector:NSSelectorFromString(@"sharedGIMMe")]; } @catch (__unused NSException *e) {}
+                            for (NSString *k in @[@"hamPlayer", @"player", @"activePlayer", @"ytPlayer", @"singleVideoController"]) {
                                 @try {
                                     id pv = [cont valueForKey:k];
                                     if (pv) {
                                         id ct = nil;
                                         @try { ct = [pv valueForKey:@"currentTime"]; } @catch (__unused NSException *e) {}
-                                        if ([ct isKindOfClass:NSNumber.class]) { cur = [ct doubleValue]; haveTime = YES; break; }
-                                        if ([ct isKindOfClass:NSValue.class]) { CMTime c; [ct getValue:&c]; cur = CMTimeGetSeconds(c); if (isfinite(cur)) haveTime = YES; }
-                                        // HAMPlayer has currentTime as CMTime directly
-                                        if (!haveTime) @try { CMTime c = ((CMTime (*)(id,SEL))objc_msgSend)(pv, NSSelectorFromString(@"currentTime")); cur = CMTimeGetSeconds(c); if (isfinite(cur) && cur>0) haveTime = YES; } @catch (__unused NSException *e) {}
-                                        if (haveTime) break;
-                                        // Try player.player.currentTime
-                                        id inner = [pv valueForKey:@"player"]; if (inner && inner!=pv) { @try { CMTime c = ((CMTime (*)(id,SEL))objc_msgSend)(inner, NSSelectorFromString(@"currentTime")); cur = CMTimeGetSeconds(c); if (isfinite(cur)) haveTime = YES; } @catch (__unused NSException *e) {} }
+                                        if ([ct isKindOfClass:[NSNumber class]]) { cur = [ct doubleValue]; haveTime = YES; break; }
+                                        if ([ct isKindOfClass:[NSValue class]]) { CMTime c; [ct getValue:&c]; cur = CMTimeGetSeconds(c); if (isfinite(cur) && cur>0) haveTime = YES; if (haveTime) break; }
+                                        @try { CMTime c = ((CMTime (*)(id, SEL))objc_msgSend)(pv, NSSelectorFromString(@"currentTime")); cur = CMTimeGetSeconds(c); if (isfinite(cur) && cur>0) haveTime = YES; if (haveTime) break; } @catch (__unused NSException *e) {}
+                                        id inner = nil; @try { inner = [pv valueForKey:@"player"]; } @catch (__unused NSException *e) {}
+                                        if (inner && inner!=pv) { @try { CMTime c = ((CMTime (*)(id, SEL))objc_msgSend)(inner, NSSelectorFromString(@"currentTime")); cur = CMTimeGetSeconds(c); if (isfinite(cur) && cur>0) haveTime = YES; if (haveTime) break; } @catch (__unused NSException *e) {} }
                                     }
                                 } @catch (__unused NSException *e) {}
                             }
@@ -926,7 +925,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
                             if (haveTime) break;
                         }
                     } @catch (__unused NSException *e) {}
-                } @catch (__unused NSException *e) {}
+                }
                 if (!haveTime) {
                     static NSTimeInterval lastNoPlayer = 0;
                     if (QTDEnabled() && CACurrentMediaTime() - lastNoPlayer > 5.0) {
@@ -1011,6 +1010,17 @@ void QTSponsorInstall(void) {
         NSString *vid = n.userInfo[@"videoId"] ?: n.userInfo[@"videoID"];
         if (vid.length) QTSponsorNotifyVideoIDChanged(vid);
     }];
+    // Fullscreen stutter fix: reposition green on orientation / watch layout change
+    [[NSNotificationCenter defaultCenter] addObserverForName:UIDeviceOrientationDidChangeNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(__unused NSNotification *n){ if (QTCurrentSegments.count) dispatch_async(dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(QTCurrentSegments); }); }];
+    // Hook watch layout change to fix green off-place when gesturing fullscreen
+    @try {
+        QTHook(@"YTAppWatchControllerImpl", @"handleWatchViewLayoutChangedFromLayout:toLayout:", @"v@:QQ", ^id(IMP old, SEL sel){
+            return ^(id obj, unsigned long long from, unsigned long long to){
+                ((void (*)(id,SEL,unsigned long long,unsigned long long))old)(obj, sel, from, to);
+                if (QTCurrentSegments.count) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.35*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ QTSponsorUpdateGreenMarks(QTCurrentSegments); });
+            };
+        });
+    } @catch (__unused NSException *e) {}
     // Fallback polling for videoID (robust for 21.38.2 where YTPlayerViewController hook is unavailable)
     // This ensures SponsorSkip works even if no hook fires — diagnostics will show fetch/skip
     dispatch_async(dispatch_get_main_queue(), ^{

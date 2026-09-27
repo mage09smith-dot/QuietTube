@@ -518,6 +518,11 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
         // Require visible height >1 to avoid picking 0-height layout guides
         BOOL hasValidFrame = NO;
         @try { hasValidFrame = v.bounds.size.width > 10 && v.bounds.size.height > 1 && v.bounds.size.height < 30; } @catch (__unused NSException *e) { hasValidFrame = NO; }
+        // Exclude time labels and other non-bar views that were crashing layout (YTSingleVideoTime)
+        if ([name containsString:@"Time"] || [name containsString:@"Label"] || [name containsString:@"Button"] || [name containsString:@"Image"] ) {
+            @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
+            continue;
+        }
         BOOL nameMatch = ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"] || [name containsString:@"Slider"] || [name containsString:@"YTPlayer"] || [name containsString:@"Indicator"] || [name containsString:@"Timeline"] || [name containsString:@"Scrub"] );
         if (nameMatch && hasValidFrame) {
             if (v.bounds.size.width > bestWidth && v.bounds.size.width > 80) {
@@ -618,6 +623,14 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     }
     @try { QTSponsorClearGreenMarks(); } @catch (__unused NSException *e) { QTSponsorGreenMarks = [NSMutableArray array]; }
     if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
+    // Use superview as container so we don't corrupt scrubber's private subview/layer layout (fixes YTSingleVideoTime sublayers crash)
+    UIView *container = scrubber.superview;
+    if (!container || ![container isKindOfClass:[UIView class]]) container = scrubber;
+    CGRect scrubFrameInContainer = [scrubber convertRect:scrubber.bounds toView:container];
+    if (!isfinite(scrubFrameInContainer.origin.x) || !isfinite(scrubFrameInContainer.size.width) || scrubFrameInContainer.size.width < 10) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_frame", @"segments": @(segments.count)});
+        return;
+    }
     for (id raw in segments) {
         if (![raw isKindOfClass:[NSDictionary class]]) continue;
         NSDictionary *s = (NSDictionary *)raw;
@@ -628,19 +641,19 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
             NSTimeInterval end = [seg[1] doubleValue];
             if (!isfinite(start) || !isfinite(end) || end <= start) continue;
             CGFloat w = 0; CGFloat h = 0;
-            @try { w = scrubber.bounds.size.width; h = scrubber.bounds.size.height; } @catch (__unused NSException *e) { continue; }
+            @try { w = scrubFrameInContainer.size.width; h = scrubFrameInContainer.size.height; } @catch (__unused NSException *e) { continue; }
             if (!isfinite(w) || !isfinite(h) || w < 10 || h < 1) continue;
-            CGFloat x = (start / duration) * w;
+            CGFloat x = scrubFrameInContainer.origin.x + (start / duration) * w;
             CGFloat sw = ((end - start) / duration) * w;
             if (!isfinite(x) || !isfinite(sw)) continue;
             if (sw < 2) sw = 2;
-            if (x < 0) x = 0;
-            if (x + sw > w) sw = w - x;
+            if (x < scrubFrameInContainer.origin.x) x = scrubFrameInContainer.origin.x;
+            if (x + sw > scrubFrameInContainer.origin.x + w) sw = (scrubFrameInContainer.origin.x + w) - x;
             if (sw <= 0) continue;
-            // Clamp height to 3-4pt green line, centered vertically if scrubber is tall
+            // Clamp height to 3-4pt green line, centered vertically
             CGFloat mh = h;
             if (mh > 8) mh = 4;
-            CGFloat my = (h - mh)/2;
+            CGFloat my = scrubFrameInContainer.origin.y + (h - mh)/2;
             UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, my, sw, mh)];
             if (!mark) continue;
             mark.backgroundColor = [UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.92];
@@ -648,7 +661,7 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
             mark.clipsToBounds = YES;
             mark.userInteractionEnabled = NO;
             mark.tag = 0x5B1A; // sponsor mark
-            @try { [scrubber addSubview:mark]; } @catch (NSException *e) {
+            @try { [container addSubview:mark]; } @catch (NSException *e) {
                 if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
                 continue;
             }

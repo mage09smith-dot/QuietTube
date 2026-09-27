@@ -970,88 +970,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
             if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": prefix, @"result": @"stale", @"cached": @(0)});
         }
     });
-    // Start timer if not already (0.5s poll, block API — iOS 10+)
-    if (!QTSponsorTimer && QTSponsorSkipEnabled()) {
-        dispatch_async(dispatch_get_main_queue(), ^{
-            if (QTSponsorTimer) return;
-            QTSponsorTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *t){
-                if (!QTCurrentSegments.count || !QTCurrentVideoID) return;
-                AVPlayer *player = QTSponsorFindPlayer();
-                NSTimeInterval cur = 0;
-                BOOL haveTime = NO;
-                if (player) {
-                    cur = CMTimeGetSeconds(player.currentTime);
-                    if (isfinite(cur)) haveTime = YES;
-                }
-                if (!haveTime) {
-                    NSTimeInterval ham = QTSponsorGetHAMTime();
-                    if (ham>0 || ham==0) { // accept 0 early
-                        if (isfinite(ham) && ham>=0) { cur = ham; haveTime = YES; }
-                    }
-                    if (!haveTime) @try {
-                        for (UIWindow *w in [UIApplication sharedApplication].windows) {
-                            // Try to find any view with currentTime KVC
-                            NSMutableArray *q = [NSMutableArray arrayWithObject:w];
-                            NSMutableSet *seen = [NSMutableSet set];
-                            while (q.count && !haveTime) {
-                                UIView *v = q.firstObject; [q removeObjectAtIndex:0];
-                                if ([seen containsObject:v]) continue;
-                                [seen addObject:v];
-                                for (NSString *k in @[@"currentTime", @"currentMediaTime", @"mediaCurrentTime"]) {
-                                    @try {
-                                        id val = [v valueForKey:k];
-                                        if ([val isKindOfClass:NSNumber.class]) { cur = [val doubleValue]; haveTime = YES; break; }
-                                        if ([val isKindOfClass:NSValue.class]) {
-                                            CMTime ct; [val getValue:&ct];
-                                            cur = CMTimeGetSeconds(ct); if (isfinite(cur)) haveTime = YES;
-                                        }
-                                    } @catch (__unused NSException *e) {}
-                                }
-                                [q addObjectsFromArray:v.subviews];
-                                if (q.count > 400) break;
-                            }
-                            if (haveTime) break;
-                        }
-                    } @catch (__unused NSException *e) {}
-                }
-                if (!haveTime) {
-                    static NSTimeInterval lastNoPlayer = 0;
-                    if (QTDEnabled() && CACurrentMediaTime() - lastNoPlayer > 5.0) {
-                        QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"segments": @(QTCurrentSegments.count)});
-                        lastNoPlayer = CACurrentMediaTime();
-                    }
-                    return;
-                }
-                NSNumber *target = QTSponsorSeekTargetForTime(cur, QTCurrentSegments);
-                if (target) {
-                    NSTimeInterval to = [target doubleValue];
-                    BOOL didSeek = NO;
-                    if (player) {
-                        [player seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-                        didSeek = YES;
-                    } else {
-                        didSeek = QTSponsorYTSeek(to);
-                        if (!didSeek) {
-                            // Try direct AVPlayer via GIMMe as last resort
-                            AVPlayer *p2 = QTSponsorFindPlayer();
-                            if (p2) {
-                                [p2 seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
-                                didSeek = YES;
-                            }
-                        }
-                    }
-                    if (didSeek) {
-                        QTSponsorSkippedTotal++;
-                        QTCount(@"sponsorSkip: segment skipped");
-                        QTSponsorShowUndoToast(cur, to);
-                        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"start": @((long long)(cur*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
-                    } else {
-                        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"noplayer", @"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"start": @((long long)(cur*1000))});
-                    }
-                }
-            }];
-        });
-    }
+    // iSponsorBlock native: no NSTimer poll (was causing lag/freeze + noplayer). Skip is handled via YTPlayerViewController time hooks below.
 }
 
 // Minimal player integration: try to hook AVPlayer periodic time.
@@ -1070,6 +989,70 @@ __attribute__((unused)) static void QTSponsorTrySeek(NSTimeInterval currentTime)
     QTSponsorShowUndoToast(currentTime, [target doubleValue]);
 }
 
+// iSponsorBlock-inspired native skip — uses YT's own time callback, no polling, no overlay
+static NSInteger QTCurrentSponsorIndex = 0;
+static NSInteger QTUnskippedSegment = -1;
+static void QTSponsorHandleTimeChange(id vc, float time) {
+    if (!QTSponsorSkipEnabled() || !QTCurrentSegments.count || !QTCurrentVideoID) return;
+    // Whitelist check (deferred)
+    // Filtered check inside SeekTarget
+    NSArray *filtered = QTSponsorFilteredSegments(QTCurrentSegments);
+    if (!filtered.count) return;
+    // Find current segment index like iSponsorBlock
+    // Use QTCurrentSponsorIndex tracking
+    if (QTCurrentSponsorIndex < 0) QTCurrentSponsorIndex = 0;
+    if (QTCurrentSponsorIndex >= (NSInteger)QTCurrentSegments.count) QTCurrentSponsorIndex = QTCurrentSegments.count-1;
+    // Try filtered array
+    for (NSInteger i=0; i<(NSInteger)filtered.count; i++) {
+        NSDictionary *s = filtered[i];
+        NSArray *seg = s[@"segment"];
+        if (seg.count!=2) continue;
+        CGFloat start = [seg[0] floatValue];
+        CGFloat end = [seg[1] floatValue];
+        if (time >= start && time < end - 0.3) {
+            // Grace 2s after user seek
+            if (QTLastUserSeek>0 && CACurrentMediaTime() - QTLastUserSeek < 2.0) {
+                if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"grace", @"cached": @(1), @"segments": @(QTCurrentSegments.count)});
+                return;
+            }
+            // Perform native seek via YT's own method (undetectable, smooth)
+            CGFloat to = end;
+            BOOL didSeek = NO;
+            @try {
+                if ([vc respondsToSelector:NSSelectorFromString(@"scrubToTime:")]) {
+                    ((void (*)(id,SEL,float))objc_msgSend)(vc, NSSelectorFromString(@"scrubToTime:"), to);
+                    didSeek = YES;
+                } else if ([vc respondsToSelector:NSSelectorFromString(@"seekToTime:")]) {
+                    ((void (*)(id,SEL,float))objc_msgSend)(vc, NSSelectorFromString(@"seekToTime:"), to);
+                    didSeek = YES;
+                } else {
+                    AVPlayer *p = QTSponsorFindPlayer();
+                    if (p) { [p seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero]; didSeek=YES; }
+                    else didSeek = QTSponsorYTSeek(to);
+                }
+            } @catch (__unused NSException *e) {}
+            if (didSeek) {
+                QTSponsorSkippedTotal++;
+                QTCount(@"sponsorSkip: segment skipped");
+                QTCurrentSponsorIndex = i+1;
+                QTLastUserSeek = 0; // reset grace after auto-skip
+                if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"skipped", @"category": s[@"category"] ?: @"sponsor", @"start": @((long long)(start*1000)), @"end": @((long long)(to*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+                if ([s[@"category"] isEqualToString:@"sponsor"] || 1) {
+                    // light haptic, no HUD for now to keep smooth
+                }
+            }
+            return;
+        }
+    }
+    // Advance index if we passed a segment
+    for (NSInteger i=0; i<(NSInteger)filtered.count; i++) {
+        NSDictionary *s = filtered[i];
+        NSArray *seg = s[@"segment"];
+        CGFloat start = [seg[0] floatValue];
+        if (time < start - 0.5 && i>0) { QTCurrentSponsorIndex = i; break; }
+        if (time >= [seg[1] floatValue]) QTCurrentSponsorIndex = i+1;
+    }
+}
 void QTSponsorInstall(void) {
     if (!QTSponsorQueue) QTSponsorQueue = dispatch_queue_create("com.quiettube.sponsorskip", DISPATCH_QUEUE_SERIAL);
     QTCount(@"sponsorSkip: installed");
@@ -1156,6 +1139,58 @@ void QTSponsorInstall(void) {
         }
     }
 }
+
+
+    // Hook YTPlayerViewController time callbacks — this is how iSponsorBlock does it (no timer, no lag)
+    @try {
+        QTHook(@"YTPlayerViewController", @"singleVideo:currentVideoTimeDidChange:", @"v@:@", ^id(IMP old, SEL sel){
+            return ^(id vc, id arg1, id arg2){
+                ((void (*)(id,SEL,id,id))old)(vc, sel, arg1, arg2);
+                @try {
+                    float time = 0;
+                    @try { time = [[arg2 valueForKey:@"time"] floatValue]; } @catch (id e) { time = [[arg2 valueForKey:@"currentTime"] floatValue]; }
+                    if (time>0) QTSponsorHandleTimeChange(vc, time);
+                } @catch (id e) {}
+            };
+        });
+    } @catch (id e) {}
+    @try {
+        QTHook(@"YTPlayerViewController", @"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:", @"v@:@", ^id(IMP old, SEL sel){
+            return ^(id vc, id arg1, id arg2){
+                ((void (*)(id,SEL,id,id))old)(vc, sel, arg1, arg2);
+                @try {
+                    float time = 0;
+                    @try { time = [[arg2 valueForKey:@"time"] floatValue]; } @catch (id e) {}
+                    if (time>0) QTSponsorHandleTimeChange(vc, time);
+                } @catch (id e) {}
+            };
+        });
+    } @catch (id e) {}
+    @try {
+        QTHook(@"YTPlayerViewController", @"playbackController:didActivateVideo:withPlaybackData:", @"v@:@@", ^id(IMP old, SEL sel){
+            return ^(id vc, id a1, id a2, id a3){
+                ((void (*)(id,SEL,id,id,id))old)(vc, sel, a1, a2, a3);
+                @try {
+                    NSString *vid = nil;
+                    @try { vid = [a2 valueForKey:@"videoId"]; } @catch (id e) {}
+                    if (!vid) @try { vid = [vc valueForKey:@"currentVideoID"]; } @catch (id e) {}
+                    if (vid.length==11) {
+                        QTCurrentSponsorIndex = 0; QTUnskippedSegment=-1;
+                        QTSponsorNotifyVideoIDChanged(vid);
+                    }
+                } @catch (id e) {}
+            };
+        });
+    } @catch (id e) {}
+    // Fallback: also hook YTSingleVideoTime directly if YTPlayerViewController hook unavailable
+    @try {
+        QTHook(@"YTSingleVideo", @"setCurrentTime:", @"v@:d", ^id(IMP old, SEL sel){
+            return ^(id obj, double t){
+                ((void (*)(id,SEL,double))old)(obj, sel, t);
+                @try { if (t>0) QTSponsorHandleTimeChange(obj, (float)t); } @catch (id e) {}
+            };
+        });
+    } @catch (id e) {}
 
 NSString *QTSponsorReport(void) {
     return [NSString stringWithFormat:@"SponsorSkip: enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu fetches=%lu cacheHits=%lu currentPrefix=%@ segments=%lu timer=%@\nDiagnostics: 9=fetch 10=skip 11=cache. Enable Enhanced logging to capture fetch latency, prefix, filtered counts, skip targets, noplayer/grace, undo.\n",

@@ -372,9 +372,35 @@ void QTSponsorInstall(void) {
     QTCount(@"sponsorSkip: installed");
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
     if (!QTSponsorBars) QTSponsorBars=[NSHashTable weakObjectsHashTable];
-    // Hooks — ytkace style, lightweight
-    @try {
-        QTHook(@"YTPlayerViewController", @"playbackController:didActivateVideo:withPlaybackData:", @"v@:@@@", ^id(IMP old, SEL sel){
+    // Hooks — ytkace style, lightweight, signature-agnostic retry (fixes 21.38.2 unavailable/mismatch)
+    void (^tryHook)(NSString *, NSString *, id (^)(IMP, SEL)) = ^(NSString *clsName, NSString *selName, id (^factory)(IMP,SEL)){
+        Class cls = NSClassFromString(clsName);
+        SEL sel = NSSelectorFromString(selName);
+        Method m = cls ? class_getInstanceMethod(cls, sel) : NULL;
+        if (!m) {
+            // Log actual available selectors for diagnostics
+            if (QTDEnabled()) {
+                NSMutableString *avail=[NSMutableString string];
+                unsigned int cnt=0; Method *list=class_copyMethodList(cls, &cnt);
+                for (unsigned int i=0;i<cnt && avail.length<400;i++) {
+                    NSString *n=NSStringFromSelector(method_getName(list[i]));
+                    if ([n containsString:@"Video"] || [n containsString:@"Time"] || [n containsString:@"playbackController"]) [avail appendFormat:@"%@ ", n];
+                }
+                free(list);
+                QTDEvent(QTDEHook, @{@"class":clsName, @"selector":selName, @"installed":@(0), @"description": avail.length?avail:@"no match"});
+            }
+            return;
+        }
+        const char *enc = method_getTypeEncoding(m);
+        IMP old = method_getImplementation(m);
+        IMP rep = imp_implementationWithBlock(factory(old, sel));
+        if (!rep) return;
+        if (!class_addMethod(cls, sel, rep, enc)) method_setImplementation(m, rep);
+        QTDEvent(QTDEHook, @{@"class":clsName, @"selector":selName, @"installed":@(1)});
+    };
+    // Initial attempt + retries at 1,3,8s to catch late-loaded YT classes (fixes unavailable on 21.38.2)
+    void (^installSponsorHooks)(void) = ^{
+        tryHook(@"YTPlayerViewController", @"playbackController:didActivateVideo:withPlaybackData:", ^id(IMP old, SEL sel){
             return ^(id vc, id a1, id a2, id a3){
                 ((void (*)(id,SEL,id,id,id))old)(vc, sel, a1, a2, a3);
                 QTCurrentSponsorController=vc;
@@ -383,27 +409,32 @@ void QTSponsorInstall(void) {
                 if (vid.length==11) QTSponsorNotifyVideoIDChanged(vid);
             };
         });
-    } @catch (__unused NSException *e) {}
-    @try {
-        QTHook(@"YTPlayerViewController", @"singleVideo:currentVideoTimeDidChange:", @"v@:@", ^id(IMP old, SEL sel){
-            return ^(id vc, id a1, id a2){
-                ((void (*)(id,SEL,id,id))old)(vc, sel, a1, a2);
-                double t=0; @try { t=[[a2 valueForKey:@"time"] doubleValue]; } @catch(__unused NSException *e){}
-                if (t>0) QTHandleTimeChange(vc, t);
+        tryHook(@"YTPlayerViewController", @"singleVideo:currentVideoTimeDidChange:", ^id(IMP old, SEL sel){
+            return ^(id vc, id video, double time){
+                ((void (*)(id,SEL,id,double))old)(vc, sel, video, time);
+                double current=0;
+                @try { if ([vc respondsToSelector:NSSelectorFromString(@"currentVideoMediaTime")]) current=((double (*)(id,SEL))objc_msgSend)(vc, NSSelectorFromString(@"currentVideoMediaTime")); } @catch(__unused NSException *e){}
+                double resolved = current>0 ? current : time;
+                if (resolved>0) QTHandleTimeChange(vc, resolved);
             };
         });
-    } @catch (__unused NSException *e) {}
-    @try {
-        QTHook(@"YTPlayerViewController", @"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:", @"v@:@", ^id(IMP old, SEL sel){
-            return ^(id vc, id a1, id a2){
-                ((void (*)(id,SEL,id,id))old)(vc, sel, a1, a2);
-                double t=0; @try { t=[[a2 valueForKey:@"time"] doubleValue]; } @catch(__unused NSException *e){}
-                if (t>0) QTHandleTimeChange(vc, t);
+        tryHook(@"YTPlayerViewController", @"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:", ^id(IMP old, SEL sel){
+            return ^(id vc, id video, double time){
+                ((void (*)(id,SEL,id,double))old)(vc, sel, video, time);
+                double current=0;
+                @try { if ([vc respondsToSelector:NSSelectorFromString(@"currentVideoMediaTime")]) current=((double (*)(id,SEL))objc_msgSend)(vc, NSSelectorFromString(@"currentVideoMediaTime")); } @catch(__unused NSException *e){}
+                double resolved = current>0 ? current : time;
+                if (resolved>0) QTHandleTimeChange(vc, resolved);
             };
         });
-    } @catch (__unused NSException *e) {}
-    @try {
-        QTHook(@"YTInlinePlayerBarContainerView", @"layoutSubviews", @"v@:", ^id(IMP old, SEL sel){
+        // ytkace also hooks YTSingleVideo setCurrentTime as fallback
+        tryHook(@"YTSingleVideo", @"setCurrentTime:", ^id(IMP old, SEL sel){
+            return ^(id obj, double t){
+                ((void (*)(id,SEL,double))old)(obj, sel, t);
+                @try { if (t>0 && QTCurrentSponsorController) QTHandleTimeChange(QTCurrentSponsorController, t); } @catch(__unused NSException *e){}
+            };
+        });
+        tryHook(@"YTInlinePlayerBarContainerView", @"layoutSubviews", ^id(IMP old, SEL sel){
             return ^(id view){
                 ((void (*)(id,SEL))old)(view, sel);
                 [QTSponsorBars addObject:view];
@@ -412,31 +443,38 @@ void QTSponsorInstall(void) {
                 QTRenderSponsorMarkers(view, target, NO);
             };
         });
-    } @catch (__unused NSException *e) {}
-    @try {
-        QTHook(@"YTWatchFloatingMiniplayerProgressBarView", @"layoutSubviews", @"v@:", ^id(IMP old, SEL sel){
+        tryHook(@"YTWatchFloatingMiniplayerProgressBarView", @"layoutSubviews", ^id(IMP old, SEL sel){
             return ^(id view){
                 ((void (*)(id,SEL))old)(view, sel);
                 [QTSponsorBars addObject:view];
                 QTRenderSponsorMarkers(view, view, YES);
             };
         });
-    } @catch (__unused NSException *e) {}
-    // Fallback polling for videoID when hooks unavailable (lightweight, no view scan)
+    };
+    installSponsorHooks();
+    for (NSNumber *d in @[@1,@3,@8]) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ installSponsorHooks(); });
+    // Fallback polling for videoID when hooks unavailable (lightweight, no view scan) + 0.5s time tick as last-resort skip (ytkace publishes currentVideoMediaTime)
     dispatch_async(dispatch_get_main_queue(), ^{
         static NSTimer *poll=nil; if(poll) return;
-        poll=[NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(__unused NSTimer *t){
+        poll=[NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(__unused NSTimer *t){
             if (!QTSponsorSkipEnabled()) return;
-            NSString *found=nil;
-            @try {
-                // Try via application windows' rootViewControllers
-                for (UIWindow *w in [UIApplication sharedApplication].windows) {
-                    UIViewController *vc=w.rootViewController;
-                    NSString *vid=QTVideoIDFromObject(vc);
-                    if (vid.length==11) { found=vid; break; }
-                }
-            } @catch(__unused NSException *e){}
-            if (found.length==11 && ![found isEqualToString:QTCurrentVideoID]) QTSponsorNotifyVideoIDChanged(found);
+            // videoID discovery
+            if (!QTCurrentVideoID || !QTCurrentSponsorController) {
+                NSString *found=nil;
+                @try {
+                    for (UIWindow *w in [UIApplication sharedApplication].windows) {
+                        UIViewController *vc=w.rootViewController;
+                        NSString *vid=QTVideoIDFromObject(vc);
+                        if (vid.length==11) { found=vid; break; }
+                    }
+                } @catch(__unused NSException *e){}
+                if (found.length==11 && ![found isEqualToString:QTCurrentVideoID]) QTSponsorNotifyVideoIDChanged(found);
+            }
+            // time tick fallback (evaluates sponsor even if YT hooks missed, mimics ytkace's currentVideoMediaTime path)
+            if (QTCurrentSponsorController && QTCurrentSegments.count) {
+                double cur=0; @try { if ([QTCurrentSponsorController respondsToSelector:NSSelectorFromString(@"currentVideoMediaTime")]) cur=((double (*)(id,SEL))objc_msgSend)(QTCurrentSponsorController, NSSelectorFromString(@"currentVideoMediaTime")); } @catch(__unused NSException *e){}
+                if (cur>0) QTHandleTimeChange(QTCurrentSponsorController, cur);
+            }
         }];
         // initial check
         @try {

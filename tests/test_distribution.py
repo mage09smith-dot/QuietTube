@@ -55,7 +55,7 @@ class DistributionTests(unittest.TestCase):
     if local:self.assertTrue((p.parent/local).exists(),f'{p.name}: {local}')
  def test_version_is_consistent(self):
   v=(R/'VERSION').read_text().strip()
-  self.assertIn(v,['1.2.0','1.3.0-exp.1','1.3.0-exp.2','1.3.0-exp.3','1.3.0-exp.4','1.3.0-exp.5','1.3.0-exp.6','1.3.0-exp.7','1.3.0-exp.8','1.3.0-exp.9','1.3.0-exp.10','1.3.0-exp.11','1.3.0-exp.12','1.3.0-exp.13','1.3.0-exp.14','1.3.0-exp.15','1.3.0-exp.16','1.3.0-exp.17','1.3.0-exp.18','1.3.0-exp.19','1.3.0-exp.20','1.3.0-exp.21','1.3.0-exp.22','1.3.0-exp.23','1.3.0-exp.24','1.3.0-exp.25','1.3.0-exp.26','1.3.0-exp.27','1.3.0-exp.28','1.3.0-exp.29','1.3.0-exp.30','1.3.0-exp.31'])
+  self.assertIn(v,['1.2.0','1.3.0-exp.1','1.3.0-exp.2','1.3.0-exp.3','1.3.0-exp.4','1.3.0-exp.5','1.3.0-exp.6','1.3.0-exp.7','1.3.0-exp.8','1.3.0-exp.9','1.3.0-exp.10','1.3.0-exp.11','1.3.0-exp.12','1.3.0-exp.13','1.3.0-exp.14','1.3.0-exp.15','1.3.0-exp.16','1.3.0-exp.17','1.3.0-exp.18','1.3.0-exp.19','1.3.0-exp.20','1.3.0-exp.21','1.3.0-exp.22','1.3.0-exp.23','1.3.0-exp.24','1.3.0-exp.25','1.3.0-exp.26','1.3.0-exp.27','1.3.0-exp.28','1.3.0-exp.29','1.3.0-exp.30','1.3.0-exp.31','1.3.0-exp.32'])
   self.assertEqual(v,json.loads((R/'release-manifest.json').read_text())['release'])
   self.assertIn(v,(R/'Sources/QTSettings.m').read_text())
   self.assertIn(v,(R/'Sources/QTAdProfile.m').read_text())

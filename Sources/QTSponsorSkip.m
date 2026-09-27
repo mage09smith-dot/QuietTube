@@ -1138,10 +1138,7 @@ void QTSponsorInstall(void) {
             }
         }
     }
-}
-
-
-    // Hook YTPlayerViewController time callbacks — this is how iSponsorBlock does it (no timer, no lag)
+    // Hook YTPlayerViewController time callbacks — this is how iSponsorBlock does it (no timer, no lag) — INSIDE install
     @try {
         QTHook(@"YTPlayerViewController", @"singleVideo:currentVideoTimeDidChange:", @"v@:@", ^id(IMP old, SEL sel){
             return ^(id vc, id arg1, id arg2){
@@ -1191,6 +1188,7 @@ void QTSponsorInstall(void) {
             };
         });
     } @catch (id e) {}
+}
 
 NSString *QTSponsorReport(void) {
     return [NSString stringWithFormat:@"SponsorSkip: enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu fetches=%lu cacheHits=%lu currentPrefix=%@ segments=%lu timer=%@\nDiagnostics: 9=fetch 10=skip 11=cache. Enable Enhanced logging to capture fetch latency, prefix, filtered counts, skip targets, noplayer/grace, undo.\n",

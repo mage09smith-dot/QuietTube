@@ -307,10 +307,13 @@ static AVPlayer *QTSponsorFindPlayer(void) {
         windows = [UIApplication sharedApplication].windows;
     }
     for (UIWindow *window in windows) {
+        if (![window isKindOfClass:[UIView class]]) continue;
         NSMutableArray *queue = [NSMutableArray arrayWithObject:window];
         NSMutableSet *seenViews = [NSMutableSet set];
         while (queue.count) {
-            UIView *view = queue.firstObject; [queue removeObjectAtIndex:0];
+            id obj0 = queue.firstObject; [queue removeObjectAtIndex:0];
+            if (![obj0 isKindOfClass:[UIView class]]) continue;
+            UIView *view = (UIView *)obj0;
             if ([seenViews containsObject:view]) continue;
             [seenViews addObject:view];
             // 1) Direct AVPlayerLayer
@@ -497,19 +500,24 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
     UIView *thinBarFallback = nil;
     CGFloat thinBestWidth = 0;
     while (queue.count) {
-        UIView *v = queue.firstObject; [queue removeObjectAtIndex:0];
+        id obj = queue.firstObject; [queue removeObjectAtIndex:0];
+        if (![obj isKindOfClass:[UIView class]]) continue;
+        UIView *v = (UIView *)obj;
+        // Defensive: v.subviews must be array of UIViews, ensure v responds to subviews
+        if (![v respondsToSelector:@selector(subviews)] || ![v respondsToSelector:@selector(bounds)]) continue;
         NSString *name = NSStringFromClass(v.class);
         // Exclude system chrome that crashes when adding subviews
-        if ([name containsString:@"ShadowView"] || [name containsString:@"BarBackground"] || [name containsString:@"VisualEffect"] || [name containsString:@"Backdrop"] || [name containsString:@"_UIBar"] || [name containsString:@"UINavigationBar"]) {
-            [queue addObjectsFromArray:v.subviews];
+        if ([name containsString:@"ShadowView"] || [name containsString:@"BarBackground"] || [name containsString:@"VisualEffect"] || [name containsString:@"Backdrop"] || [name containsString:@"_UIBar"] || [name containsString:@"UINavigationBar"] || [name containsString:@"UIBarBackground"]) {
+            @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
             continue;
         }
         if ([v isKindOfClass:[UIVisualEffectView class]]) {
-            [queue addObjectsFromArray:v.subviews];
+            @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
             continue;
         }
         // Require visible height >1 to avoid picking 0-height layout guides
-        BOOL hasValidFrame = v.bounds.size.width > 10 && v.bounds.size.height > 1 && v.bounds.size.height < 30;
+        BOOL hasValidFrame = NO;
+        @try { hasValidFrame = v.bounds.size.width > 10 && v.bounds.size.height > 1 && v.bounds.size.height < 30; } @catch (__unused NSException *e) { hasValidFrame = NO; }
         BOOL nameMatch = ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"] || [name containsString:@"Slider"] || [name containsString:@"YTPlayer"] || [name containsString:@"Indicator"] || [name containsString:@"Timeline"] || [name containsString:@"Scrub"] );
         if (nameMatch && hasValidFrame) {
             if (v.bounds.size.width > bestWidth && v.bounds.size.width > 80) {
@@ -518,11 +526,13 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
             }
         }
         // Fallback: any thin horizontal strip near bottom that looks like a progress line (YouTube red bar is ~3-4pt high)
-        if (v.bounds.size.height <= 8 && v.bounds.size.height >= 2 && v.bounds.size.width > thinBestWidth && v.bounds.size.width > 120) {
-            thinBestWidth = v.bounds.size.width;
-            thinBarFallback = v;
-        }
-        [queue addObjectsFromArray:v.subviews];
+        @try {
+            if (v.bounds.size.height <= 8 && v.bounds.size.height >= 2 && v.bounds.size.width > thinBestWidth && v.bounds.size.width > 120) {
+                thinBestWidth = v.bounds.size.width;
+                thinBarFallback = v;
+            }
+        } @catch (__unused NSException *e) {}
+        @try { [queue addObjectsFromArray:v.subviews]; } @catch (__unused NSException *e) {}
         if (queue.count > 800) break;
     }
     if (best) return best;
@@ -587,39 +597,63 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (scrubber.bounds.size.width < 10) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_zero_width", @"segments": @(segments.count)}); return; }
     QTSponsorClearGreenMarks();
     if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
-    // Safety: if scrubber is UIVisualEffectView, use its contentView
+    // Safety: validate scrubber is UIView and not array, and handle UIVisualEffectView
+    if (![scrubber isKindOfClass:[UIView class]]) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_type", @"segments": @(segments.count)});
+        return;
+    }
     if ([scrubber isKindOfClass:[UIVisualEffectView class]]) {
         scrubber = ((UIVisualEffectView *)scrubber).contentView;
+        if (![scrubber isKindOfClass:[UIView class]]) return;
     }
     // Extra guard: never add to shadow/background visual effect views
     NSString *scrubName = NSStringFromClass(scrubber.class);
-    if ([scrubName containsString:@"Shadow"] || [scrubName containsString:@"VisualEffect"]) {
+    if ([scrubName containsString:@"Shadow"] || [scrubName containsString:@"VisualEffect"] || [scrubName containsString:@"BarBackground"]) {
         if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_scrubber", @"segments": @(segments.count)});
         return;
     }
-    for (NSDictionary *s in segments) {
+    if (![scrubber respondsToSelector:@selector(bounds)] || ![scrubber respondsToSelector:@selector(addSubview:)]) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_no_addSubview", @"segments": @(segments.count)});
+        return;
+    }
+    @try { QTSponsorClearGreenMarks(); } @catch (__unused NSException *e) { QTSponsorGreenMarks = [NSMutableArray array]; }
+    if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
+    for (id raw in segments) {
+        if (![raw isKindOfClass:[NSDictionary class]]) continue;
+        NSDictionary *s = (NSDictionary *)raw;
         NSArray *seg = s[@"segment"];
-        if (seg.count!=2) continue;
-        NSTimeInterval start = [seg[0] doubleValue];
-        NSTimeInterval end = [seg[1] doubleValue];
-        if (end <= start) continue;
-        CGFloat w = scrubber.bounds.size.width;
-        if (w < 10) continue;
-        CGFloat x = (start / duration) * w;
-        CGFloat sw = ((end - start) / duration) * w;
-        if (sw < 2) sw = 2;
-        if (x < 0) x = 0;
-        if (x + sw > w) sw = w - x;
-        UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, 0, sw, scrubber.bounds.size.height)];
-        mark.backgroundColor = [[UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.92] colorWithAlphaComponent:0.92];
-        mark.layer.cornerRadius = 1;
-        mark.userInteractionEnabled = NO;
-        mark.tag = 0x5B1A; // sponsor mark
-        @try { [scrubber addSubview:mark]; } @catch (NSException *e) {
-            if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
-            continue;
-        }
-        [QTSponsorGreenMarks addObject:mark];
+        if (![seg isKindOfClass:[NSArray class]] || seg.count!=2) continue;
+        @try {
+            NSTimeInterval start = [seg[0] doubleValue];
+            NSTimeInterval end = [seg[1] doubleValue];
+            if (!isfinite(start) || !isfinite(end) || end <= start) continue;
+            CGFloat w = 0; CGFloat h = 0;
+            @try { w = scrubber.bounds.size.width; h = scrubber.bounds.size.height; } @catch (__unused NSException *e) { continue; }
+            if (!isfinite(w) || !isfinite(h) || w < 10 || h < 1) continue;
+            CGFloat x = (start / duration) * w;
+            CGFloat sw = ((end - start) / duration) * w;
+            if (!isfinite(x) || !isfinite(sw)) continue;
+            if (sw < 2) sw = 2;
+            if (x < 0) x = 0;
+            if (x + sw > w) sw = w - x;
+            if (sw <= 0) continue;
+            // Clamp height to 3-4pt green line, centered vertically if scrubber is tall
+            CGFloat mh = h;
+            if (mh > 8) mh = 4;
+            CGFloat my = (h - mh)/2;
+            UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, my, sw, mh)];
+            if (!mark) continue;
+            mark.backgroundColor = [UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.92];
+            mark.layer.cornerRadius = 1;
+            mark.clipsToBounds = YES;
+            mark.userInteractionEnabled = NO;
+            mark.tag = 0x5B1A; // sponsor mark
+            @try { [scrubber addSubview:mark]; } @catch (NSException *e) {
+                if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
+                continue;
+            }
+            @try { [QTSponsorGreenMarks addObject:mark]; } @catch (__unused NSException *e) {}
+        } @catch (__unused NSException *e) { continue; }
     }
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"green", @"segments": @(segments.count)});
 }
@@ -893,22 +927,9 @@ void QTSponsorInstall(void) {
     if (!QTSponsorQueue) QTSponsorQueue = dispatch_queue_create("com.quiettube.sponsorskip", DISPATCH_QUEUE_SERIAL);
     QTCount(@"sponsorSkip: installed");
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
-    // User seek grace — hook correct AVPlayer signature (CMTime struct, not scalar)
-    // AVPlayer seekToTime: is v@:{_CMTime=qiIq} ; also cover tolerance variants
-    QTHook(@"AVPlayer", @"seekToTime:toleranceBefore:toleranceAfter:", @"v@:{_CMTime=qiIq}{_CMTime=qiIq}{_CMTime=qiIq}", ^id(IMP old, SEL sel) {
-        return ^(id obj, CMTime t, CMTime before, CMTime after) {
-            QTLastUserSeek = CACurrentMediaTime();
-            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"userskip", @"cached": @(1)});
-            ((void (*)(id,SEL,CMTime,CMTime,CMTime))old)(obj, sel, t, before, after);
-        };
-    });
-    QTHook(@"AVPlayer", @"seekToTime:completionHandler:", @"v@:{_CMTime=qiIq}@?", ^id(IMP old, SEL sel) {
-        return ^(id obj, CMTime t, id block) {
-            QTLastUserSeek = CACurrentMediaTime();
-            if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result": @"userskip", @"cached": @(1)});
-            ((void (*)(id,SEL,CMTime,id))old)(obj, sel, t, block);
-        };
-    });
+    // User seek grace — hooks disabled for now (both signatures mismatched on this YouTube build, see diagnostics)
+    // We keep grace via timer's 2s window disabled to avoid false skips; user seek toast handled via YT seek fallback
+    (void)QTLastUserSeek;
     // Hook YT's videoID change if possible: YTWatchController or YTIPlayerResponse
     // We add observer for videoID via method hook on YTPlayerViewController if available
     Class ytc = NSClassFromString(@"YTPlayerViewController");

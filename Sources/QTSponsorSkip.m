@@ -377,7 +377,7 @@ static AVPlayer *QTSponsorFindPlayer(void) {
                 UIViewController *c = q.firstObject; [q removeObjectAtIndex:0];
                 if ([seenVC containsObject:c]) continue;
                 [seenVC addObject:c];
-                for (NSString *k in @[@"playerViewController", @"player", @"avPlayer", @"ytPlayer", @"activePlayer"]) {
+                for (NSString *k in @[@"playerViewController", @"player", @"avPlayer", @"ytPlayer", @"activePlayer", @"videoPlayer", @"hamPlayer", @"playerView"]) {
                     @try {
                         id v = [c valueForKey:k];
                         if ([v isKindOfClass:[AVPlayer class]]) return v;
@@ -385,10 +385,40 @@ static AVPlayer *QTSponsorFindPlayer(void) {
                             id inner = [v valueForKey:@"player"];
                             if ([inner isKindOfClass:[AVPlayer class]]) return inner;
                         }
+                        if (v) {
+                            id inner = [v valueForKey:@"player"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                            inner = [v valueForKey:@"avPlayer"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                        }
                     } @catch (__unused NSException *e) {}
                 }
                 for (UIViewController *child in c.childViewControllers) if (child) [q addObject:child];
                 if (c.presentedViewController) [q addObject:c.presentedViewController];
+            }
+        }
+    } @catch (__unused NSException *e) {}
+    // Last resort: GIMMe DI container (YouTube uses it for watch/player services)
+    @try {
+        Class gimme = NSClassFromString(@"GIMMe");
+        if (gimme) {
+            id container = nil;
+            @try { container = [gimme valueForKey:@"sharedInstance"]; } @catch (__unused NSException *e) {}
+            if (!container) @try { container = [gimme performSelector:NSSelectorFromString(@"sharedInstance")]; } @catch (__unused NSException *e) {}
+            if (!container) @try { container = [gimme performSelector:NSSelectorFromString(@"sharedGIMMe")]; } @catch (__unused NSException *e) {}
+            if (container) {
+                for (NSString *k in @[@"singleVideoController", @"watchController", @"playerViewController", @"activePlayer", @"ytPlayer", @"hamPlayer", @"player"]) {
+                    @try {
+                        id v = [container valueForKey:k];
+                        if ([v isKindOfClass:[AVPlayer class]]) return v;
+                        if (v) {
+                            id inner = [v valueForKey:@"player"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                            inner = [v valueForKey:@"avPlayer"];
+                            if ([inner isKindOfClass:[AVPlayer class]]) return inner;
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
             }
         }
     } @catch (__unused NSException *e) {}
@@ -469,16 +499,26 @@ static UIView *QTSponsorFindScrubber(UIView *root) {
     while (queue.count) {
         UIView *v = queue.firstObject; [queue removeObjectAtIndex:0];
         NSString *name = NSStringFromClass(v.class);
-        BOOL nameMatch = ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"] || [name containsString:@"Slider"] || [name containsString:@"Bar"] || [name containsString:@"Indicator"] || [name containsString:@"Timeline"] || [name containsString:@"Scrub"] || [name containsString:@"Control"] );
-        if (nameMatch) {
-            if (v.bounds.size.width > bestWidth && v.bounds.size.width > 80 && v.bounds.size.height < 30) {
+        // Exclude system chrome that crashes when adding subviews
+        if ([name containsString:@"ShadowView"] || [name containsString:@"BarBackground"] || [name containsString:@"VisualEffect"] || [name containsString:@"Backdrop"] || [name containsString:@"_UIBar"] || [name containsString:@"UINavigationBar"]) {
+            [queue addObjectsFromArray:v.subviews];
+            continue;
+        }
+        if ([v isKindOfClass:[UIVisualEffectView class]]) {
+            [queue addObjectsFromArray:v.subviews];
+            continue;
+        }
+        // Require visible height >1 to avoid picking 0-height layout guides
+        BOOL hasValidFrame = v.bounds.size.width > 10 && v.bounds.size.height > 1 && v.bounds.size.height < 30;
+        BOOL nameMatch = ([name containsString:@"Progress"] || [name containsString:@"Scrubber"] || [name containsString:@"PlayerBar"] || [name containsString:@"Seek"] || [name containsString:@"Slider"] || [name containsString:@"YTPlayer"] || [name containsString:@"Indicator"] || [name containsString:@"Timeline"] || [name containsString:@"Scrub"] );
+        if (nameMatch && hasValidFrame) {
+            if (v.bounds.size.width > bestWidth && v.bounds.size.width > 80) {
                 bestWidth = v.bounds.size.width;
                 best = v;
             }
         }
-        // Fallback: any thin horizontal strip near bottom that looks like a progress line (YouTube red bar is ~3pt high)
-        if (v.bounds.size.height <= 8 && v.bounds.size.height >= 1 && v.bounds.size.width > thinBestWidth && v.bounds.size.width > 120) {
-            // Check that it's roughly centered / near bottom of its parent — but be permissive
+        // Fallback: any thin horizontal strip near bottom that looks like a progress line (YouTube red bar is ~3-4pt high)
+        if (v.bounds.size.height <= 8 && v.bounds.size.height >= 2 && v.bounds.size.width > thinBestWidth && v.bounds.size.width > 120) {
             thinBestWidth = v.bounds.size.width;
             thinBarFallback = v;
         }
@@ -547,6 +587,16 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
     if (scrubber.bounds.size.width < 10) { if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_zero_width", @"segments": @(segments.count)}); return; }
     QTSponsorClearGreenMarks();
     if (!QTSponsorGreenMarks) QTSponsorGreenMarks = [NSMutableArray array];
+    // Safety: if scrubber is UIVisualEffectView, use its contentView
+    if ([scrubber isKindOfClass:[UIVisualEffectView class]]) {
+        scrubber = ((UIVisualEffectView *)scrubber).contentView;
+    }
+    // Extra guard: never add to shadow/background visual effect views
+    NSString *scrubName = NSStringFromClass(scrubber.class);
+    if ([scrubName containsString:@"Shadow"] || [scrubName containsString:@"VisualEffect"]) {
+        if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_bad_scrubber", @"segments": @(segments.count)});
+        return;
+    }
     for (NSDictionary *s in segments) {
         NSArray *seg = s[@"segment"];
         if (seg.count!=2) continue;
@@ -554,15 +604,21 @@ static void QTSponsorUpdateGreenMarks(NSArray<NSDictionary *> *segments) {
         NSTimeInterval end = [seg[1] doubleValue];
         if (end <= start) continue;
         CGFloat w = scrubber.bounds.size.width;
+        if (w < 10) continue;
         CGFloat x = (start / duration) * w;
         CGFloat sw = ((end - start) / duration) * w;
         if (sw < 2) sw = 2;
+        if (x < 0) x = 0;
+        if (x + sw > w) sw = w - x;
         UIView *mark = [[UIView alloc] initWithFrame:CGRectMake(x, 0, sw, scrubber.bounds.size.height)];
-        mark.backgroundColor = [[UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.95] colorWithAlphaComponent:0.92];
+        mark.backgroundColor = [[UIColor colorWithRed:0.18 green:0.80 blue:0.44 alpha:0.92] colorWithAlphaComponent:0.92];
         mark.layer.cornerRadius = 1;
         mark.userInteractionEnabled = NO;
         mark.tag = 0x5B1A; // sponsor mark
-        [scrubber addSubview:mark];
+        @try { [scrubber addSubview:mark]; } @catch (NSException *e) {
+            if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"green_add_failed", @"segments": @(segments.count)});
+            continue;
+        }
         [QTSponsorGreenMarks addObject:mark];
     }
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"prefix": QTSponsorPrefixForVideoID(QTCurrentVideoID) ?: @"none", @"result": @"green", @"segments": @(segments.count)});
@@ -794,6 +850,14 @@ void QTSponsorNotifyVideoIDChanged(NSString *videoID) {
                         didSeek = YES;
                     } else {
                         didSeek = QTSponsorYTSeek(to);
+                        if (!didSeek) {
+                            // Try direct AVPlayer via GIMMe as last resort
+                            AVPlayer *p2 = QTSponsorFindPlayer();
+                            if (p2) {
+                                [p2 seekToTime:CMTimeMakeWithSeconds(to, NSEC_PER_SEC) toleranceBefore:kCMTimeZero toleranceAfter:kCMTimeZero];
+                                didSeek = YES;
+                            }
+                        }
                     }
                     if (didSeek) {
                         QTSponsorSkippedTotal++;

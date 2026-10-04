@@ -17,6 +17,7 @@ static NSArray<NSDictionary *> *QTCatalog(void) {
           @[@"eventPromos",@"Feed",@"Hide promotional shelves",@"Hide recognized featured and event cards. Does not change the logo."],
           @[@"background",@"Playback",@"Background audio",@"Keep audio playing when you leave the app. Use YouTube’s own setting for Picture in Picture."],
           @[@"autoplay",@"Playback",@"Stop the next video",@"Prevent selected automatic next-video actions, not feed previews."],
+          @[@"useWebClient",@"Playback",@"Prefer WEB player (fewer errors)",@"When on, the WEB player is used internally. This avoids the 'Something went wrong' PoToken error entirely, like uBlock on web. May affect quality. Restart required."],
           @[@"plainLogo",@"Appearance",@"Classic YouTube logo",@"Replace seasonal and event logo artwork."],
           @[@"extendedFeed",@"Advanced",@"Extended feed matching",@"Needed by additional ad formats and most feed cleanup options. Disabling pauses those options without erasing their preferences."],
           @[@"mutationTrace",@"Troubleshooting",@"Record feed activity",@"Local, bounded timing and class/template details. No automatic upload. Review before sharing."],
@@ -61,5 +62,6 @@ void QTSaveSettings(NSDictionary<NSString *,NSNumber *> *changes) {
     [known addObject:@"sponsorSkip"];
     [known addObject:@"sponsorSkipIntroOutro"];
     [known addObject:@"sponsorSkipSelfPromo"];
+    [known addObject:@"useWebClient"];
     for (NSString *key in changes) if ([known containsObject:key]) QTSet(key,[changes[key] boolValue]);
 }

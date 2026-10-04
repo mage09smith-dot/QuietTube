@@ -3,6 +3,7 @@
 #import "QTDiagnosticsBridge.h"
 #import "QTSettingsModel.h"
 #import "QTSponsorSkip.h"
+#import "QTSponsorEngine.h"
 
 @interface QTOptionsController : UITableViewController
 @property(nonatomic, copy) NSString *group;
@@ -57,13 +58,19 @@
                 @{@"title":@"Clear logs",@"action":@"clearDiagnostics",@"note":@"Deletes local log files. Does not turn off the master switch."}]];
         }
         if ([self.group isEqualToString:@"SponsorSkip"]) {
-            // SponsorSkip: master (sponsor) + 2 children + clear disclaimer (pin to top of controls)
             rows=[NSMutableArray arrayWithArray:@[
-                @{@"title":@"SponsorSkip",@"key":@"sponsorSkip",@"note":@"Off by default. When on, auto-skips sponsor segments. Hash-private: only 4-char prefix leaves device (sponsor.ajay.app). Shows 3s Undo."},
-                @{@"title":@"Also skip Intro / Outro",@"key":@"sponsorSkipIntroOutro",@"note":@"Also skip intro and outro when SponsorSkip is on."},
-                @{@"title":@"Also skip Self-promo",@"key":@"sponsorSkipSelfPromo",@"note":@"Also skip unpaid self-promotion when SponsorSkip is on."},
+                @{@"title":@"SponsorSkip",@"key":@"sponsorSkip",@"note":@"Off by default. When on, auto-skips sponsor segments. Hash-private: only 4-char prefix leaves device (sponsor.ajay.app). Shows Undo for 4s."},
+                @{@"title":@"Also skip Intro / Outro",@"key":@"sponsorSkipIntroOutro",@"note":@"Also skip intro and outro when SponsorSkip is on. Blue/amber markers on seek bar."},
+                @{@"title":@"Also skip Self-promo",@"key":@"sponsorSkipSelfPromo",@"note":@"Also skip unpaid self-promotion when SponsorSkip is on. Yellow markers."},
+                @{@"title":@"Segments skipped this session",@"action":@"sponsorStats",@"note":@"Tap to see counts and current video segments."},
                 @{@"title":@"⚠️ Community data — not always correct",@"note":@"Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as 'sponsor'. This has been abused to censor content you might want to see. If a video jumps or cuts content, turn SponsorSkip off and replay. You can review and vote on segments at sponsor.ajay.app. SponsorSkip is off by default for this reason.",@"readOnly":@YES}
             ]];
+        }
+        if ([self.group isEqualToString:@"Playback"]) {
+            // Playback page: existing rows plus WEB client toggle for PoToken bypass
+            NSMutableArray *pb=[rows mutableCopy];
+            [pb addObject:@{@"title":@"Prefer WEB player (fewer errors)",@"key":@"useWebClient",@"note":@"When on, YouTube's WEB player is used internally. This avoids the 'Something went wrong' error entirely (like uBlock on web). May affect quality selection. Restart required."}];
+            rows=pb;
         }
         self.rows=rows;
     }
@@ -197,6 +204,12 @@
 }
 - (void)tableView:(UITableView *)tv didSelectRowAtIndexPath:(NSIndexPath *)index {
     [tv deselectRowAtIndexPath:index animated:YES]; NSDictionary *row=self.rows[index.row];
+    if ([row[@"action"] isEqualToString:@"sponsorStats"]) {
+        NSString *report = nil;
+        @try { report = QTSponsorEngineReport(); if (!report) report = @"No data yet."; } @catch(__unused NSException *e) { report = @"Report unavailable."; }
+        [self showText:report title:@"SponsorSkip stats"];
+        return;
+    }
     if (row[@"key"] || [row[@"readOnly"] boolValue]) return;
     if (row[@"page"] || row[@"preset"]) {
         QTOptionsController *page=[[QTOptionsController alloc] initWithStyle:UITableViewStyleInsetGrouped];

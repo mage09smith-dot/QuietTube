@@ -4,42 +4,52 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// QTStreamFallback — real bypass for the PoToken failure that causes
-// "Something went wrong" (code 14).  Strategy: rewrite the InnerTube
-// player request's JSON body so YouTube thinks it's a TVHTML5/WEB
-// client, which is known to not require a PoToken for playback.
-// This is a pure-NSURLSession body rewrite — no JS solver needed.
-//
-// Flow:
-//   1. QTIntegrity spoofs attest + PoToken + visitorData headers.
-//   2. If that still fails, PlaybackFix retries (reload + seek).
-//   3. If retry still fails (emergency), StreamFallback flips the
-//      InnerTube client in the *next* player request so the server
-//      mints the stream without PoToken.  The flag is time-boxed
-//      (30s) so normal IOS behavior resumes.
+// QTStreamFallback — PoToken/code-14 bypass.
+// Two modes:
+//   A) Transient fallback (default): after 2 stalls in a row, arm a 30s TVHTML5 rewrite.
+//   B) Persistent WEB client (opt-in via Quiet Controls): every InnerTube request is WEB,
+//      so PoToken is never required.  Mirrors what web+uBlock does — WEB client has
+//      no PoToken gate.  This is the proper fix for "every 60s" stalls.
 
 static NSUInteger QTFallbackAttempts, QTFallbackSuccesses, QTFallbackRewrites;
 static BOOL QTFallbackInstalled;
 static volatile BOOL QTFallbackArmed;
 static NSTimeInterval QTFallbackArmUntil;
+static BOOL QTFallbackUseWebClient = NO;
 static IMP OrigUploadTaskBody;
 static IMP OrigDataTaskCB;
+
+static NSString * const QTWebClientKey = @"QuietTube.v1.useWebClient";
+BOOL QTStreamFallbackUsesWebClient(void) {
+    return QTFallbackUseWebClient;
+}
+void QTStreamFallbackSetUseWebClient(BOOL useWeb) {
+    QTFallbackUseWebClient = useWeb;
+    [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:QTWebClientKey];
+    if (useWeb) { QTFallbackArmed = YES; QTFallbackArmUntil = [NSDate date].timeIntervalSince1970 + 3600*24*365; }
+    else { QTFallbackArmed = NO; }
+}
 
 // TVHTML5 client context that YouTube's WEB fallback uses.
 // These values are taken from YouTube WEB_M fallback used by yt-dlp
 // and Invidious when IOS PoToken fails.  WEB fails open without PoToken.
-static NSDictionary *QTFallbackClientContext(void) {
+static NSDictionary *QTFallbackWebClientContext(void) {
     return @{
         @"client": @{
-            @"clientName": @"TVHTML5",
-            @"clientVersion": @"7.20240716.00.00",
+            @"clientName": @"WEB",
+            @"clientVersion": @"2.20240726.00.00",
             @"hl": @"en",
             @"gl": @"US",
             @"clientScreen": @"WATCH",
             @"osName": @"Web",
-            @"osVersion": @"1.0"
+            @"osVersion": @"1.0",
+            @"platform": @"DESKTOP"
         }
     };
+}
+static NSDictionary *QTFallbackClientContext(void) {
+    // WEB is more complete than TVHTML5 and closer to what uBlock/web sees.
+    return QTFallbackWebClientContext();
 }
 
 static NSData *QTRewriteInnertubeBody(NSData *body) {
@@ -54,20 +64,34 @@ static NSData *QTRewriteInnertubeBody(NSData *body) {
     if (![client isKindOfClass:NSMutableDictionary.class]) return nil;
     NSMutableDictionary *clientDict = (NSMutableDictionary*)client;
     NSString *origName = clientDict[@"clientName"];
-    // Only rewrite IOS -> TVHTML5.  Don't touch WEB/TV/ANDROID.
-    if (![origName isEqualToString:@"IOS"] && ![origName isEqualToString:@"IOS_C"]) return nil;
+    BOOL isWebMode = QTFallbackUseWebClient;
+    if (!isWebMode) {
+        // Transient mode: only IOS -> WEB
+        if (![origName isEqualToString:@"IOS"] && ![origName isEqualToString:@"IOS_C"]) return nil;
+    } else {
+        // Persistent WEB mode: always rewrite IOS/IOS_C, but leave WEB/TV alone if already correct
+        if ([origName isEqualToString:@"WEB"] || [origName isEqualToString:@"TVHTML5"]) return nil;
+        if (![origName isEqualToString:@"IOS"] && ![origName isEqualToString:@"IOS_C"]) {
+            // Unknown client (ANDROID etc) — rewrite to WEB anyway for consistency
+        }
+    }
     NSDictionary *fallback = QTFallbackClientContext();
     NSDictionary *fbClient = fallback[@"client"];
     for (NSString *k in fbClient) clientDict[k] = fbClient[k];
-    // Remove PoToken/contentPoToken fields so server doesn't validate a bad one
     [d removeObjectForKey:@"contentPoToken"];
     [d removeObjectForKey:@"serviceIntegrityDimensions"];
+    // In WEB mode also strip iOS-specific fields that confuse the server
+    if (isWebMode) {
+        [context removeObjectForKey:@"adSignalsInfo"];
+        [d removeObjectForKey:@"playbackContext"];
+    }
     NSData *out = [NSJSONSerialization dataWithJSONObject:d options:0 error:nil];
     if (out) QTFallbackRewrites++;
     return out;
 }
 
 static BOOL QTFallbackIsArmed(void) {
+    if (QTFallbackUseWebClient) return YES;
     if (!QTFallbackArmed) return NO;
     if ([NSDate date].timeIntervalSince1970 > QTFallbackArmUntil) {
         QTFallbackArmed = NO;
@@ -136,8 +160,13 @@ static void QTInstallBodyRewrite(void) {
 void QTInstallStreamFallback(void) {
     if (QTFallbackInstalled) return;
     QTFallbackInstalled=YES;
+    QTFallbackUseWebClient = [[NSUserDefaults standardUserDefaults] boolForKey:QTWebClientKey];
+    if (QTFallbackUseWebClient) {
+        QTFallbackArmed = YES;
+        QTFallbackArmUntil = [NSDate date].timeIntervalSince1970 + 3600*24*365;
+    }
     QTInstallBodyRewrite();
-    QTCount(@"streamFallback: installed");
+    @try { QTCount(QTFallbackUseWebClient ? @"streamFallback: installed (WEB persistent)" : @"streamFallback: installed"); } @catch(__unused NSException *e){}
 }
 
 BOOL QTStreamFallbackHandleError(id overlay, NSError *error, double savedTime) {
@@ -166,7 +195,8 @@ BOOL QTStreamFallbackHandleError(id overlay, NSError *error, double savedTime) {
 }
 
 NSString *QTStreamFallbackReport(void) {
-    return [NSString stringWithFormat:@"StreamFallback: attempts=%lu successes=%lu rewrites=%lu armed=%@\n",
+    return [NSString stringWithFormat:@"StreamFallback: mode=%@ attempts=%lu successes=%lu rewrites=%lu armed=%@\n",
+        QTFallbackUseWebClient?@"WEB-persistent":@"transient",
         (unsigned long)QTFallbackAttempts, (unsigned long)QTFallbackSuccesses, (unsigned long)QTFallbackRewrites,
         QTFallbackIsArmed()?@"yes":@"no"];
 }

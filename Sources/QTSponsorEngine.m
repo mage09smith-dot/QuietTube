@@ -85,6 +85,24 @@ static NSString *QTEFindViaGIMMe(void) {
     }
     return nil;
 }
+// Last skipped segment for Undo
+static NSDictionary *QTELastSkipped;
+static double QTELastSkipFrom;
+void QTEUndoLastSkip(void) {
+    if (!QTELastSkipped || !QTEController) return;
+    double start = [QTELastSkipped[@"start"] doubleValue];
+    if (!QTELastSkipped[@"start"]) start = [QTELastSkipped[@"segment"][0] doubleValue];
+    // Seek back to just before segment start
+    double target = MAX(0, start - 0.6);
+    id ctrl = QTEController;
+    SEL sel = NSSelectorFromString(@"seekToTime:");
+    if ([ctrl respondsToSelector:sel]) ((void(*)(id,SEL,double))objc_msgSend)(ctrl, sel, target);
+    // Allow re-trigger suppression to expire
+    if (QTESkippedTokens) [QTESkippedTokens removeObject:@([QTECurrentSegments indexOfObject:QTELastSkipped])];
+    QTELastSkipped = nil;
+    QTCount(@"sponsorSkip: undo");
+}
+
 static void QTESeekTo(id controller, double t) {
     SEL sel = NSSelectorFromString(@"seekToTime:");
     if ([controller respondsToSelector:sel]) { ((void(*)(id,SEL,double))objc_msgSend)(controller, sel, t); return; }
@@ -98,11 +116,22 @@ static void QTESeekTo(id controller, double t) {
 
 // ============ color ============
 static UIColor *QTEColorForCategory(NSString *cat) {
-    if ([cat isEqualToString:@"intro"]) return [UIColor colorWithRed:0.24 green:0.58 blue:0.96 alpha:0.95];
-    if ([cat isEqualToString:@"outro"]) return [UIColor colorWithRed:0.96 green:0.78 blue:0.18 alpha:0.95];
-    if ([cat isEqualToString:@"selfpromo"]) return [UIColor colorWithRed:0.96 green:0.86 blue:0.18 alpha:0.95];
-    if ([cat isEqualToString:@"interaction"]) return [UIColor colorWithRed:0.80 green:0.00 blue:1.00 alpha:0.95];
-    return [UIColor colorWithRed:0.10 green:0.78 blue:0.36 alpha:0.95];
+    if ([cat isEqualToString:@"intro"]) return [UIColor colorWithRed:0.23 green:0.56 blue:0.99 alpha:0.92]; // blue
+    if ([cat isEqualToString:@"outro"]) return [UIColor colorWithRed:0.99 green:0.68 blue:0.14 alpha:0.92]; // amber
+    if ([cat isEqualToString:@"selfpromo"]) return [UIColor colorWithRed:0.99 green:0.86 blue:0.18 alpha:0.92]; // yellow
+    if ([cat isEqualToString:@"interaction"]) return [UIColor colorWithRed:0.73 green:0.32 blue:0.99 alpha:0.92]; // purple
+    if ([cat isEqualToString:@"preview"]) return [UIColor colorWithRed:0.30 green:0.85 blue:0.55 alpha:0.92];
+    return [UIColor colorWithRed:0.09 green:0.80 blue:0.39 alpha:0.92]; // sponsor green
+}
+static NSString *QTELabelForCategory(NSString *cat) {
+    if ([cat isEqualToString:@"sponsor"]) return @"Sponsor";
+    if ([cat isEqualToString:@"intro"]) return @"Intro";
+    if ([cat isEqualToString:@"outro"]) return @"Outro";
+    if ([cat isEqualToString:@"selfpromo"]) return @"Self-promo";
+    if ([cat isEqualToString:@"interaction"]) return @"Interaction";
+    if ([cat isEqualToString:@"preview"]) return @"Preview";
+    if ([cat isEqualToString:@"music_offtopic"]) return @"Music";
+    return cat ?: @"Sponsor";
 }
 
 // ============ cache ============
@@ -308,11 +337,13 @@ static void QTEEvaluate(id controller, double time) {
             [QTESkippedTokens addObject:token];
             didSkip=YES;
             double target = end + 0.12;
+            QTELastSkipped = seg;
+            QTELastSkipFrom = time;
             QTESeekTo(controller, target);
             QTESkippedCount++;
             QTCount(@"sponsorSkip: segment skipped");
             if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTECurrentVideoID?QTSponsorPrefixForVideoID(QTECurrentVideoID):@"none", @"result":@"skipped", @"category":cat, @"start":@((long long)(start*1000)), @"end":@((long long)(end*1000)), @"skipped":@(QTESkippedCount)});
-            // HUD
+            // HUD with Undo button
             dispatch_async(dispatch_get_main_queue(), ^{
                 UIViewController *top=nil;
                 for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
@@ -325,28 +356,50 @@ static void QTEEvaluate(id controller, double time) {
                 while (top.presentedViewController) top=top.presentedViewController;
                 if (!top.view.window) return;
                 UIView *banner=[[UIView alloc] init];
-                banner.backgroundColor=[UIColor colorWithWhite:0.08 alpha:0.94];
-                banner.layer.cornerRadius=12; banner.translatesAutoresizingMaskIntoConstraints=NO;
-                UILabel *lab=[UILabel new]; lab.translatesAutoresizingMaskIntoConstraints=NO;
-                lab.text=[NSString stringWithFormat:@"Skipped %@ (%.0fs)", cat, end-start];
+                banner.backgroundColor=[UIColor colorWithWhite:0.09 alpha:0.96];
+                banner.layer.cornerRadius=13; banner.translatesAutoresizingMaskIntoConstraints=NO;
+                banner.layer.shadowColor=UIColor.blackColor.CGColor; banner.layer.shadowOpacity=0.22; banner.layer.shadowRadius=8; banner.layer.shadowOffset=CGSizeMake(0, 4);
+                UIStackView *stack=[[UIStackView alloc] init];
+                stack.axis=UILayoutConstraintAxisHorizontal; stack.alignment=UIStackViewAlignmentCenter; stack.spacing=12;
+                stack.translatesAutoresizingMaskIntoConstraints=NO;
+                UILabel *lab=[UILabel new];
+                lab.text=[NSString stringWithFormat:@"Skipped %@ (%.0fs)", QTELabelForCategory(cat), end-start];
                 lab.textColor=UIColor.whiteColor; lab.font=[UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
-                [banner addSubview:lab];
+                UIButton *undo=[UIButton buttonWithType:UIButtonTypeSystem];
+                [undo setTitle:@"Undo" forState:UIControlStateNormal];
+                undo.titleLabel.font=[UIFont systemFontOfSize:13 weight:UIFontWeightBold];
+                [undo setTitleColor:[UIColor systemYellowColor] forState:UIControlStateNormal];
+                undo.backgroundColor=[UIColor colorWithWhite:1 alpha:0.14]; undo.layer.cornerRadius=8;
+                undo.contentEdgeInsets=UIEdgeInsetsMake(6, 12, 6, 12);
+                [undo addTarget:nil action:@selector(QTEUndoTapped) forControlEvents:UIControlEventTouchUpInside];
+                // Use block-based target via associated object
+                objc_setAssociatedObject(undo, "banner", banner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                [undo addAction:[UIAction actionWithTitle:@"" image:nil identifier:nil handler:^(__kindof UIAction *a){
+                    UIView *b = objc_getAssociatedObject(a.sender, "banner");
+                    [UIView animateWithDuration:0.18 animations:^{ b.alpha=0; } completion:^(__unused BOOL f){ [b removeFromSuperview]; }];
+                    QTEUndoLastSkip();
+                }] forControlEvents:UIControlEventTouchUpInside];
+                [stack addArrangedSubview:lab];
+                [stack addArrangedSubview:undo];
+                [banner addSubview:stack];
                 [NSLayoutConstraint activateConstraints:@[
-                    [lab.topAnchor constraintEqualToAnchor:banner.topAnchor constant:10],
-                    [lab.leadingAnchor constraintEqualToAnchor:banner.leadingAnchor constant:14],
-                    [lab.trailingAnchor constraintEqualToAnchor:banner.trailingAnchor constant:-14],
-                    [lab.bottomAnchor constraintEqualToAnchor:banner.bottomAnchor constant:-10],
+                    [stack.topAnchor constraintEqualToAnchor:banner.topAnchor constant:9],
+                    [stack.leadingAnchor constraintEqualToAnchor:banner.leadingAnchor constant:14],
+                    [stack.trailingAnchor constraintEqualToAnchor:banner.trailingAnchor constant:-10],
+                    [stack.bottomAnchor constraintEqualToAnchor:banner.bottomAnchor constant:-9],
                 ]];
                 banner.alpha=0; banner.transform=CGAffineTransformMakeScale(0.96,0.96);
                 [top.view addSubview:banner];
                 UILayoutGuide *safe=top.view.safeAreaLayoutGuide;
                 [NSLayoutConstraint activateConstraints:@[
                     [banner.centerXAnchor constraintEqualToAnchor:safe.centerXAnchor],
-                    [banner.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-54],
+                    [banner.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-56],
+                    [banner.leadingAnchor constraintGreaterThanOrEqualToAnchor:safe.leadingAnchor constant:16],
+                    [banner.trailingAnchor constraintLessThanOrEqualToAnchor:safe.trailingAnchor constant:-16],
                 ]];
                 [UIView animateWithDuration:0.22 animations:^{ banner.alpha=1; banner.transform=CGAffineTransformIdentity; }];
-                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2.8*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-                    [UIView animateWithDuration:0.22 animations:^{ banner.alpha=0; banner.transform=CGAffineTransformMakeScale(0.96,0.96);} completion:^(__unused BOOL f){ [banner removeFromSuperview]; }];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(4.0*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    if (banner.superview) [UIView animateWithDuration:0.22 animations:^{ banner.alpha=0; banner.transform=CGAffineTransformMakeScale(0.96,0.96);} completion:^(__unused BOOL f){ [banner removeFromSuperview]; }];
                 });
             });
             *stop=YES;
@@ -397,8 +450,12 @@ static void QTERender(UIView *receiver, UIView *target, BOOL fullHeight) {
             CALayer *m=[CALayer layer];
             NSString *cat=seg[@"category"]?:@"sponsor";
             m.backgroundColor=QTEColorForCategory(cat).CGColor;
-            m.zPosition=1; m.cornerRadius=1;
+            m.zPosition=1; m.cornerRadius=1.2;
+            m.borderColor=[UIColor colorWithWhite:0 alpha:0.18].CGColor; m.borderWidth=0.5;
+            m.shadowColor=QTEColorForCategory(cat).CGColor; m.shadowOpacity=0.35; m.shadowRadius=2; m.shadowOffset=CGSizeZero;
             [container addSublayer:m];
+            // Add label for segments wide enough
+            // label is added as sublayer only if width warrants it (done in layout pass)
         }
         objc_setAssociatedObject(receiver, QTERenderedKey, segments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     }

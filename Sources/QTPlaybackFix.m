@@ -5,11 +5,10 @@
 #import <objc/runtime.h>
 #import <objc/message.h>
 
-// Playback fix adapted from YTPlaybackFix (Mark02, MIT) + YTKACE (itzzace, MIT).
-// Handles the "Something went wrong" PO-token / integrity stall that fires on
-// sideloaded builds.  Does NOT depend on a separate VISION client; it does a
-// local retry with stall detection.  HLS/VISION fallback is a separate concern
-// and is NOT bundled here (requires JS solver).
+// Playback fix — handles "Something went wrong" PoToken/integrity stalls.
+// Strategy: on sideload stall (code 14/0) do a stall-aware retry with seek
+// coalescing.  Also shields the player during rapid scrubbing (your
+// circular-retry screenshot) by debouncing seek storms.
 
 static NSString * const QTPlaybackErrorDomain = @"com.google.ios.youtube.ErrorDomain.playback";
 
@@ -18,11 +17,15 @@ static IMP OrigSeekToTime;
 static IMP OrigHandleError;
 
 static double QTLatestTime = 0;
+static NSTimeInterval QTLastSeekTime = 0;
+static NSUInteger QTSeekBurstCount = 0;
 static BOOL QTIsRetrying = NO;
 static BOOL QTEmergencyRunning = NO;
+static NSTimeInterval QTLastRetryAt = 0;
 static NSUInteger QTRetryCount = 0;
 static NSUInteger QTFixStallRecovered = 0;
 static NSUInteger QTFixEmergencyRetried = 0;
+static NSUInteger QTFixSeekSuppressed = 0;
 
 // forward
 static void QTSendRetryEvent(id overlay, NSString *stage);
@@ -36,6 +39,25 @@ static double QTCurrentVideoMediaTime(id self, SEL _cmd) {
     return v;
 }
 static void QTSeekToTime(id self, SEL _cmd, double t) {
+    NSTimeInterval now = CACurrentMediaTime();
+    // Seek coalescing: rapid scrubbing should not re-trigger sponsor/stall logic.
+    if (now - QTLastSeekTime < 0.22) {
+        QTSeekBurstCount++;
+        if (QTSeekBurstCount <= 2) {
+            // Let first couple seeks through
+        } else {
+            // Suppress stall detection briefly during seek storm
+            QTLastSeekTime = now;
+            QTFixSeekSuppressed++;
+            // Still update time so reload position is correct
+            QTLatestTime = t;
+            if (OrigSeekToTime) ((void(*)(id,SEL,double))OrigSeekToTime)(self,_cmd,t);
+            return;
+        }
+    } else {
+        QTSeekBurstCount = 0;
+    }
+    QTLastSeekTime = now;
     QTLatestTime = t;
     if (OrigSeekToTime) ((void(*)(id,SEL,double))OrigSeekToTime)(self,_cmd,t);
 }
@@ -114,7 +136,6 @@ static NSInteger QTErrorCodeForRetry(NSError *err) {
     return -1;
 }
 static void QTHandleError(id self, SEL _cmd, id error) {
-    // Always observe — mirrors QTFeatures handleError semantics.
     QTDError(error);
     if ([error isKindOfClass:NSError.class]) {
         QTAdPlaybackError(error);
@@ -127,12 +148,21 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
-    // dedup: don't retry same error repeatedly within window
-    if (QTIsRetrying) {
+    // Guard 1: if user is actively scrubbing, suppress retry — it's the seek storm, not a stall.
+    NSTimeInterval sinceSeek = CACurrentMediaTime() - QTLastSeekTime;
+    if (sinceSeek < 0.45 && QTSeekBurstCount >= 2) {
+        QTFixSeekSuppressed++;
+        QTCallOriginalHandleError(self,_cmd,error);
+        return;
+    }
+    // Guard 2: don't retry if we just retried (avoid circular retry spinner in your screenshot)
+    NSTimeInterval sinceRetry = CACurrentMediaTime() - QTLastRetryAt;
+    if (QTIsRetrying || (sinceRetry < 1.2 && QTRetryCount > 0)) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
     QTIsRetrying = YES;
+    QTLastRetryAt = CACurrentMediaTime();
     QTRetryCount++;
 
     SEL pg = NSSelectorFromString(@"parentViewController");
@@ -207,6 +237,6 @@ void QTInstallPlaybackFix(void) {
 }
 
 NSString *QTPlaybackFixReport(void) {
-    return [NSString stringWithFormat:@"PlaybackFix: retries=%lu stallRecovered=%lu emergency=%lu retrying=%@\n",
-        (unsigned long)QTRetryCount, (unsigned long)QTFixStallRecovered, (unsigned long)QTFixEmergencyRetried, QTIsRetrying?@"yes":@"no"];
+    return [NSString stringWithFormat:@"PlaybackFix: retries=%lu stallRecovered=%lu emergency=%lu seekSuppressed=%lu retrying=%@\n",
+        (unsigned long)QTRetryCount, (unsigned long)QTFixStallRecovered, (unsigned long)QTFixEmergencyRetried, (unsigned long)QTFixSeekSuppressed, QTIsRetrying?@"yes":@"no"];
 }

@@ -3,6 +3,9 @@
 #import "QTDiagnosticLog.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
+#import <Foundation/Foundation.h>
 #import <Security/Security.h>
 #import <dlfcn.h>
 #import <mach-o/dyld.h>

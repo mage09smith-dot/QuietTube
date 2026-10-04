@@ -4,6 +4,8 @@
 #import "QTStreamFallback.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import <QuartzCore/QuartzCore.h>
+#import <UIKit/UIKit.h>
 
 // Playback fix — handles "Something went wrong" PoToken/integrity stalls.
 // Strategy: on sideload stall (code 14/0) do a stall-aware retry with seek

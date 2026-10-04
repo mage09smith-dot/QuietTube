@@ -146,25 +146,34 @@ static NSString *QTAppID(id self, SEL _cmd) { return QTYTBundleID; }
 static BOOL QTTrue(id self, SEL _cmd) { return YES; }
 static BOOL QTFalse(id self, SEL _cmd) { return NO; }
 
-// Access group
+// Access group — CRASH FIX: must not deadlock or double-free on launch.
+// dispatch_once inside constructor is safe, but SecItemAdd may call back into bundle hooks.
+// Guard against re-entrancy and nil bridging.
 static NSString *QTCurrentAccessGroup(void) {
     static NSString *group;
     static dispatch_once_t once;
+    static BOOL onceDone = NO;
+    if (onceDone) return group;
     dispatch_once(&once, ^{
-        NSDictionary *q = @{ (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
-                             (__bridge id)kSecAttrAccount: @"QTDummyItem",
-                             (__bridge id)kSecAttrService: @"QTDummyService",
-                             (__bridge id)kSecReturnAttributes: @YES };
-        CFTypeRef res = NULL;
-        OSStatus s = SecItemCopyMatching((__bridge CFDictionaryRef)q, &res);
-        if (s == errSecItemNotFound) s = SecItemAdd((__bridge CFDictionaryRef)q, &res);
-        if (s == errSecDuplicateItem) s = SecItemCopyMatching((__bridge CFDictionaryRef)q, &res);
-        if (s == errSecSuccess && res) {
-            NSDictionary *a = CFBridgingRelease(res);
-            id v = a[(__bridge id)kSecAttrAccessGroup];
-            if ([v isKindOfClass:NSString.class]) group = [v copy];
-            else CFRelease(res);
-        } else if (res) CFRelease(res);
+        NSString *found = nil;
+        @try {
+            NSDictionary *q = @{ (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
+                                 (__bridge id)kSecAttrAccount: @"QTDummyItem_v2",
+                                 (__bridge id)kSecAttrService: @"QTDummyService_v2",
+                                 (__bridge id)kSecReturnAttributes: @YES,
+                                 (__bridge id)kSecUseDataProtectionKeychain: @YES };
+            CFTypeRef res = NULL;
+            OSStatus s = SecItemCopyMatching((__bridge CFDictionaryRef)q, &res);
+            if (s == errSecItemNotFound) s = SecItemAdd((__bridge CFDictionaryRef)q, &res);
+            if (s == errSecDuplicateItem) { if (res) CFRelease(res); res = NULL; s = SecItemCopyMatching((__bridge CFDictionaryRef)q, &res); }
+            if (s == errSecSuccess && res) {
+                NSDictionary *a = (__bridge_transfer NSDictionary *)res;
+                id v = a[(__bridge id)kSecAttrAccessGroup];
+                if ([v isKindOfClass:NSString.class]) found = [v copy];
+            } else if (res) CFRelease(res);
+        } @catch (__unused NSException *e) {}
+        if (found) group = found;
+        onceDone = YES;
     });
     return group;
 }
@@ -218,141 +227,125 @@ static void QTSetDelegate(id self, SEL _cmd, id del) {
 
 // DeviceCheck: DCDevice
 static void QTDCSpoof_DCDevice(Class cls) {
-    // +[DCDevice currentDevice] is not needed — we spoof the instance methods
-    // -[DCDevice isSupported] -> YES
-    // -[DCDevice generateTokenWithCompletionHandler:] -> immediate fake token
-    SEL sup = NSSelectorFromString(@"isSupported");
-    Method m = class_getInstanceMethod(cls, sup);
-    if (m) { method_setImplementation(m, (IMP)QTTrue); QTIntInstalled(@"DCDevice", @"isSupported"); }
-    else QTIntMiss(@"DCDevice", @"isSupported");
-
-    SEL gen = NSSelectorFromString(@"generateTokenWithCompletionHandler:");
-    Method mg = class_getInstanceMethod(cls, gen);
-    if (mg) {
-        OrigDCGenerateToken = method_getImplementation(mg);
-        IMP rep = imp_implementationWithBlock(^void(id self, id handler){
-            // handler is void (^)(NSData *token, NSError *error)
-            if (!handler) return;
-            NSData *fake = [@"quietube-dc-fake-token-0000000000000000" dataUsingEncoding:NSUTF8StringEncoding];
-            void (^cb)(NSData*,NSError*) = handler;
-            // complete async to mimic real DeviceCheck
-            dispatch_async(dispatch_get_main_queue(), ^{ cb(fake, nil); });
-            QTIntTrace(@"integrity: DCDevice generateToken spoofed");
-        });
-        method_setImplementation(mg, rep);
-        QTIntInstalled(@"DCDevice", @"generateTokenWithCompletionHandler:");
-    } else QTIntMiss(@"DCDevice", @"generateTokenWithCompletionHandler:");
-
-    // iOS 14+ variant: generateTokenWithCompletionHandler: is sometimes on DCAppAttestService
-    // also try generateTokenWithOptions:completionHandler:
-    SEL gen2 = NSSelectorFromString(@"generateTokenWithOptions:completionHandler:");
-    Method mg2 = class_getInstanceMethod(cls, gen2);
-    if (mg2) {
-        OrigDCGenerateTokenNew = method_getImplementation(mg2);
-        IMP rep2 = imp_implementationWithBlock(^void(id self, id opts, id handler){
-            if (!handler) return;
-            NSData *fake = [@"quietube-dc-fake-token-0000000000000000" dataUsingEncoding:NSUTF8StringEncoding];
-            void (^cb)(NSData*,NSError*) = handler;
-            dispatch_async(dispatch_get_main_queue(), ^{ cb(fake, nil); });
-        });
-        method_setImplementation(mg2, rep2);
-        QTIntInstalled(@"DCDevice", @"generateTokenWithOptions:completionHandler:");
-    }
+    @try {
+        SEL sup = NSSelectorFromString(@"isSupported");
+        Method m = class_getInstanceMethod(cls, sup);
+        if (m) { method_setImplementation(m, (IMP)QTTrue); QTIntInstalled(@"DCDevice", @"isSupported"); }
+        else QTIntMiss(@"DCDevice", @"isSupported");
+        SEL gen = NSSelectorFromString(@"generateTokenWithCompletionHandler:");
+        Method mg = class_getInstanceMethod(cls, gen);
+        if (mg) {
+            OrigDCGenerateToken = method_getImplementation(mg);
+            IMP rep = imp_implementationWithBlock(^void(id self, id handler){
+                if (!handler) return;
+                NSData *fake = [@"quietube-dc-fake-token-0000000000000000" dataUsingEncoding:NSUTF8StringEncoding];
+                void (^cb)(NSData*,NSError*) = (void(^)(NSData*,NSError*))handler;
+                dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(fake, nil); } @catch(__unused NSException *e){} });
+                @try { QTIntTrace(@"integrity: DCDevice generateToken spoofed"); } @catch(__unused NSException *e){}
+            });
+            method_setImplementation(mg, rep);
+            QTIntInstalled(@"DCDevice", @"generateTokenWithCompletionHandler:");
+        } else QTIntMiss(@"DCDevice", @"generateTokenWithCompletionHandler:");
+        SEL gen2 = NSSelectorFromString(@"generateTokenWithOptions:completionHandler:");
+        Method mg2 = class_getInstanceMethod(cls, gen2);
+        if (mg2) {
+            OrigDCGenerateTokenNew = method_getImplementation(mg2);
+            IMP rep2 = imp_implementationWithBlock(^void(id self, id opts, id handler){
+                if (!handler) return;
+                NSData *fake = [@"quietube-dc-fake-token-0000000000000000" dataUsingEncoding:NSUTF8StringEncoding];
+                void (^cb)(NSData*,NSError*) = (void(^)(NSData*,NSError*))handler;
+                dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(fake, nil); } @catch(__unused NSException *e){} });
+            });
+            method_setImplementation(mg2, rep2);
+            QTIntInstalled(@"DCDevice", @"generateTokenWithOptions:completionHandler:");
+        }
+    } @catch (__unused NSException *e) {}
 }
 
 static void QTSpoof_DCAppAttestService(Class cls) {
-    // DCAppAttestService: isSupported -> YES, generateKeyWithCompletionHandler -> fake keyId
-    SEL sup = NSSelectorFromString(@"isSupported");
-    Method m = class_getInstanceMethod(cls, sup);
-    if (!m) m = class_getClassMethod(cls, sup);
-    if (m) {
-        method_setImplementation(m, (IMP)QTTrue);
-        QTIntInstalled(NSStringFromClass(cls), @"isSupported");
-    }
-    // Also try class method variant
-    SEL supC = NSSelectorFromString(@"isSupported");
-    Method mc = class_getClassMethod(cls, supC);
-    if (mc && m != mc) { method_setImplementation(mc, (IMP)QTTrue); }
-
-    SEL gen = NSSelectorFromString(@"generateKeyWithCompletionHandler:");
-    Method mg = class_getInstanceMethod(cls, gen);
-    if (!mg) mg = class_getClassMethod(cls, gen);
-    if (mg) {
-        OrigAppAttestGenerateKey = method_getImplementation(mg);
-        IMP rep = imp_implementationWithBlock(^void(id self, id handler){
-            if (!handler) return;
-            void (^cb)(NSString*,NSError*) = handler;
-            dispatch_async(dispatch_get_main_queue(), ^{ cb(@"quietube-fake-key-id-00000000-0000-0000-0000-000000000000", nil); });
-            QTIntTrace(@"integrity: DCAppAttestService generateKey spoofed");
-        });
-        method_setImplementation(mg, rep);
-        QTIntInstalled(NSStringFromClass(cls), @"generateKeyWithCompletionHandler:");
-    }
-    SEL attest = NSSelectorFromString(@"attestKey:clientDataHash:completionHandler:");
-    Method ma = class_getInstanceMethod(cls, attest);
-    if (!ma) ma = class_getClassMethod(cls, attest);
-    if (ma) {
-        OrigAppAttestAttestKey = method_getImplementation(ma);
-        IMP rep = imp_implementationWithBlock(^void(id self, NSString *keyId, NSData *hash, id handler){
-            if (!handler) return;
-            void (^cb)(NSData*,NSError*) = handler;
-            NSData *fakeAttest = [@"quietube-fake-attestation-object-000000000000" dataUsingEncoding:NSUTF8StringEncoding];
-            dispatch_async(dispatch_get_main_queue(), ^{ cb(fakeAttest, nil); });
-            QTIntTrace(@"integrity: DCAppAttestService attestKey spoofed");
-        });
-        method_setImplementation(ma, rep);
-        QTIntInstalled(NSStringFromClass(cls), @"attestKey:clientDataHash:completionHandler:");
-    }
-    SEL assertion = NSSelectorFromString(@"generateAssertion:clientDataHash:completionHandler:");
-    Method mas = class_getInstanceMethod(cls, assertion);
-    if (!mas) mas = class_getClassMethod(cls, assertion);
-    if (mas) {
-        OrigAppAttestGenerateAssertion = method_getImplementation(mas);
-        IMP rep = imp_implementationWithBlock(^void(id self, NSString *keyId, NSData *hash, id handler){
-            if (!handler) return;
-            void (^cb)(NSData*,NSError*) = handler;
-            NSData *fake = [@"quietube-fake-assertion-000000000000" dataUsingEncoding:NSUTF8StringEncoding];
-            dispatch_async(dispatch_get_main_queue(), ^{ cb(fake, nil); });
-        });
-        method_setImplementation(mas, rep);
-        QTIntInstalled(NSStringFromClass(cls), @"generateAssertion:clientDataHash:completionHandler:");
-    }
+    @try {
+        SEL sup = NSSelectorFromString(@"isSupported");
+        Method m = class_getInstanceMethod(cls, sup);
+        if (!m) m = class_getClassMethod(cls, sup);
+        if (m) { method_setImplementation(m, (IMP)QTTrue); QTIntInstalled(NSStringFromClass(cls), @"isSupported"); }
+        SEL supC = NSSelectorFromString(@"isSupported");
+        Method mc = class_getClassMethod(cls, supC);
+        if (mc && m != mc) { method_setImplementation(mc, (IMP)QTTrue); }
+        SEL gen = NSSelectorFromString(@"generateKeyWithCompletionHandler:");
+        Method mg = class_getInstanceMethod(cls, gen);
+        if (!mg) mg = class_getClassMethod(cls, gen);
+        if (mg) {
+            OrigAppAttestGenerateKey = method_getImplementation(mg);
+            IMP rep = imp_implementationWithBlock(^void(id self, id handler){
+                if (!handler) return;
+                void (^cb)(NSString*,NSError*) = (void(^)(NSString*,NSError*))handler;
+                dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(@"quietube-fake-key-id-00000000-0000-0000-0000-000000000000", nil); } @catch(__unused NSException *e){} });
+                @try { QTIntTrace(@"integrity: DCAppAttestService generateKey spoofed"); } @catch(__unused NSException *e){}
+            });
+            method_setImplementation(mg, rep);
+            QTIntInstalled(NSStringFromClass(cls), @"generateKeyWithCompletionHandler:");
+        }
+        SEL attest = NSSelectorFromString(@"attestKey:clientDataHash:completionHandler:");
+        Method ma = class_getInstanceMethod(cls, attest);
+        if (!ma) ma = class_getClassMethod(cls, attest);
+        if (ma) {
+            OrigAppAttestAttestKey = method_getImplementation(ma);
+            IMP rep = imp_implementationWithBlock(^void(id self, NSString *keyId, NSData *hash, id handler){
+                if (!handler) return;
+                void (^cb)(NSData*,NSError*) = (void(^)(NSData*,NSError*))handler;
+                NSData *fakeAttest = [@"quietube-fake-attestation-object-000000000000" dataUsingEncoding:NSUTF8StringEncoding];
+                dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(fakeAttest, nil); } @catch(__unused NSException *e){} });
+                @try { QTIntTrace(@"integrity: DCAppAttestService attestKey spoofed"); } @catch(__unused NSException *e){}
+            });
+            method_setImplementation(ma, rep);
+            QTIntInstalled(NSStringFromClass(cls), @"attestKey:clientDataHash:completionHandler:");
+        }
+        SEL assertion = NSSelectorFromString(@"generateAssertion:clientDataHash:completionHandler:");
+        Method mas = class_getInstanceMethod(cls, assertion);
+        if (!mas) mas = class_getClassMethod(cls, assertion);
+        if (mas) {
+            OrigAppAttestGenerateAssertion = method_getImplementation(mas);
+            IMP rep = imp_implementationWithBlock(^void(id self, NSString *keyId, NSData *hash, id handler){
+                if (!handler) return;
+                void (^cb)(NSData*,NSError*) = (void(^)(NSData*,NSError*))handler;
+                NSData *fake = [@"quietube-fake-assertion-000000000000" dataUsingEncoding:NSUTF8StringEncoding];
+                dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(fake, nil); } @catch(__unused NSException *e){} });
+            });
+            method_setImplementation(mas, rep);
+            QTIntInstalled(NSStringFromClass(cls), @"generateAssertion:clientDataHash:completionHandler:");
+        }
+    } @catch (__unused NSException *e) {}
 }
 
 // ASDeviceCheck / Apple Private?
 static void QTSpoof_BotGuardAndPoToken(void) {
     // Hunt all classes containing BotGuard, PoToken, Attest, Integrity, Visitor
+    // CRASH FIX: previously overwrote mcount and leaked — caused OOB read at launch.
     unsigned int count = 0;
     Class *list = objc_copyClassList(&count);
     for (unsigned int i=0;i<count;i++) {
         NSString *name = NSStringFromClass(list[i]);
         BOOL isBotGuard = [name containsString:@"BotGuard"] || [name containsString:@"BOTGUARD"] || [name containsString:@"PoToken"] || [name containsString:@"POToken"] || [name containsString:@"Attest"] || [name containsString:@"Integrity"] || [name containsString:@"VisitorData"];
         if (!isBotGuard) continue;
-        unsigned int mcount = 0;
+        unsigned int mcount = 0, cmcount = 0;
         Method *methods = class_copyMethodList(list[i], &mcount);
-        // Also check class methods
-        Method *cmethods = class_copyMethodList(object_getClass(list[i]), &mcount);
-        // Try to spoof any method returning NSData/NSString that looks like token generation
+        Method *cmethods = class_copyMethodList(object_getClass(list[i]), &cmcount);
         for (unsigned int j=0;j<mcount;j++) {
             SEL sel = method_getName(methods[j]);
             NSString *selName = NSStringFromSelector(sel);
-            // heuristics: methods that generate tokens/attestations
             if ([selName containsString:@"poToken"] || [selName containsString:@"PoToken"] ||
                 [selName containsString:@"generate"] || [selName containsString:@"attest"] ||
                 [selName containsString:@"integrity"] || [selName containsString:@"mint"]) {
                 const char *types = method_getTypeEncoding(methods[j]);
-                // only spoof object returns
-                if (types[0] == '@') {
-                    // don't break; log
+                if (types && types[0] == '@') {
                     QTIntTrace([NSString stringWithFormat:@"integrity: candidate %@ -[%@ %@] types=%s", name, name, selName, types]);
                 }
             }
         }
-        free(methods);
-        // avoid leaking cmethods count mismatch; just ignore
-        (void)cmethods;
+        if (methods) free(methods);
+        if (cmethods) free(cmethods);
     }
-    free(list);
+    if (list) free(list);
 
     // Direct known PoToken classes (YTPoToken, YTPoTokenProvider, etc)
     NSArray *poTokenClasses = @[@"YTPoTokenProvider", @"YTPoTokenManager", @"YTPoToken", @"YTAttestService", @"YTIntegrityService", @"YTBotGuardService", @"YTColdConfig", @"YTVisitorDataProvider"];
@@ -461,86 +454,111 @@ static void QTSpoof_BotGuardAndPoToken(void) {
 static IMP OrigUploadTaskWithRequest;
 static IMP OrigDataTaskWithRequestAndDelegate;
 static void QTScrubYouTubeRequest(NSMutableURLRequest *mutable) {
-    NSString *url = mutable.URL.absoluteString ?: @"";
-    if (!([url containsString:@"youtubei.googleapis.com"] || [url containsString:@"googlevideo.com"] || [url containsString:@"youtube.com"])) return;
-    NSString *existingPo = [mutable valueForHTTPHeaderField:@"X-Goog-PoToken"];
-    if (!existingPo) {
-        [mutable setValue:@"QUlEAAAAAQEAAABQAgAAAEAQABgAIAAoAFAAZABhAGQAcQBkAGEAcABhAGoAaABrAGwAbQBuAG8AcABxAHIAcwB0AHUAdgB3AHgAeQB6ADAAMQAyADMANABFAEcASQBNAE8AUQBT" forHTTPHeaderField:@"X-Goog-PoToken"];
-        QTIntTrace(@"integrity: injected fake X-Goog-PoToken");
-    }
-    NSString *visitor = [mutable valueForHTTPHeaderField:@"X-Goog-Visitor-Id"];
-    if (!visitor || visitor.length < 10) {
-        [mutable setValue:@"Cgtzc2NsY0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0MIDAwMDAwMDAwMDAwMA" forHTTPHeaderField:@"X-Goog-Visitor-Id"];
-    }
-    NSString *client = [mutable valueForHTTPHeaderField:@"X-YouTube-Client-Version"];
-    if (!client) [mutable setValue:QTYTVersion forHTTPHeaderField:@"X-YouTube-Client-Version"];
-    // Also ensure User-Agent looks like YouTube IOS
-    NSString *ua = [mutable valueForHTTPHeaderField:@"User-Agent"];
-    if (!ua || ![ua containsString:@"YouTube"]) {
-        [mutable setValue:[NSString stringWithFormat:@"com.google.ios.youtube/%@ (iPhone; iOS 17.5; Scale/3.00)", QTYTVersion] forHTTPHeaderField:@"User-Agent"];
-    }
+    @try {
+        if (!mutable || !mutable.URL) return;
+        NSString *url = mutable.URL.absoluteString ?: @"";
+        if (!([url containsString:@"youtubei.googleapis.com"] || [url containsString:@"googlevideo.com"] || [url containsString:@"youtube.com"])) return;
+        NSDictionary *hdrs = mutable.allHTTPHeaderFields ?: @{};
+        NSString *existingPo = hdrs[@"X-Goog-PoToken"] ?: [mutable valueForHTTPHeaderField:@"X-Goog-PoToken"];
+        if (!existingPo.length) {
+            [mutable setValue:@"QUlEAAAAAQEAAABQAgAAAEAQABgAIAAoAFAAZABhAGQAcQBkAGEAcABhAGoAaABrAGwAbQBuAG8AcABxAHIAcwB0AHUAdgB3AHgAeQB6ADAAMQAyADMANABFAEcASQBNAE8AUQBT" forHTTPHeaderField:@"X-Goog-PoToken"];
+            @try { QTIntTrace(@"integrity: injected fake X-Goog-PoToken"); } @catch(__unused NSException *e){}
+        }
+        NSString *visitor = hdrs[@"X-Goog-Visitor-Id"] ?: [mutable valueForHTTPHeaderField:@"X-Goog-Visitor-Id"];
+        if (!visitor || visitor.length < 10) {
+            [mutable setValue:@"Cgtzc2NsY0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0MIDAwMDAwMDAwMA" forHTTPHeaderField:@"X-Goog-Visitor-Id"];
+        }
+        NSString *client = hdrs[@"X-YouTube-Client-Version"] ?: [mutable valueForHTTPHeaderField:@"X-YouTube-Client-Version"];
+        if (!client.length) [mutable setValue:QTYTVersion forHTTPHeaderField:@"X-YouTube-Client-Version"];
+        NSString *ua = hdrs[@"User-Agent"] ?: [mutable valueForHTTPHeaderField:@"User-Agent"];
+        if (!ua.length || ![ua containsString:@"YouTube"]) {
+            [mutable setValue:[NSString stringWithFormat:@"com.google.ios.youtube/%@ (iPhone; iOS 17.5; Scale/3.00)", QTYTVersion] forHTTPHeaderField:@"User-Agent"];
+        }
+    } @catch (__unused NSException *e) {}
 }
 static void QTInstallNetworkSpoof(void) {
-    Class cls = NSClassFromString(@"NSURLSession");
-    if (!cls) return;
-    // Primary: dataTaskWithRequest:completionHandler:
-    {
-        SEL sel = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
-        Method m = class_getInstanceMethod(cls, sel);
-        if (m) {
-            OrigNSURLSessionDataTask = method_getImplementation(m);
-            IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, id handler){
-                NSMutableURLRequest *mutable = [req mutableCopy] ?: [NSMutableURLRequest requestWithURL:req.URL];
-                if (!mutable) mutable = (NSMutableURLRequest*)req;
-                QTScrubYouTubeRequest(mutable);
-                if (OrigNSURLSessionDataTask) return ((id(*)(id,SEL,id,id))OrigNSURLSessionDataTask)(self, sel, mutable ?: req, handler);
-                return (id)nil;
-            });
-            method_setImplementation(m, rep);
-            QTIntInstalled(@"NSURLSession", @"dataTaskWithRequest:completionHandler:");
-        }
-    }
-    // Secondary: uploadTaskWithRequest:fromData:completionHandler: (used by YT networking)
-    {
-        SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
-        Method m = class_getInstanceMethod(cls, sel);
-        if (m) {
-            OrigUploadTaskWithRequest = method_getImplementation(m);
-            IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
-                NSMutableURLRequest *mutable = [req mutableCopy] ?: [NSMutableURLRequest requestWithURL:req.URL];
-                if (!mutable) mutable = (NSMutableURLRequest*)req;
-                QTScrubYouTubeRequest(mutable);
-                if (OrigUploadTaskWithRequest) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskWithRequest)(self, sel, mutable ?: req, body, handler);
-                return (id)nil;
-            });
-            method_setImplementation(m, rep);
-            QTIntInstalled(@"NSURLSession", @"uploadTaskWithRequest:fromData:completionHandler:");
-        }
-    }
-    // Tertiary: dataTaskWithRequest: (no completion, delegate-based — used by some YT stacks)
-    {
-        SEL sel = NSSelectorFromString(@"dataTaskWithRequest:");
-        Method m = class_getInstanceMethod(cls, sel);
-        if (m) {
-            OrigDataTaskWithRequestAndDelegate = method_getImplementation(m);
-            IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req){
-                NSMutableURLRequest *mutable = [req mutableCopy] ?: [NSMutableURLRequest requestWithURL:req.URL];
-                if (!mutable) mutable = (NSMutableURLRequest*)req;
-                QTScrubYouTubeRequest(mutable);
-                if (OrigDataTaskWithRequestAndDelegate) return ((id(*)(id,SEL,id))OrigDataTaskWithRequestAndDelegate)(self, sel, mutable ?: req);
-                return (id)nil;
-            });
-            method_setImplementation(m, rep);
-            QTIntInstalled(@"NSURLSession", @"dataTaskWithRequest:");
-        }
-    }
+    @try {
+        Class cls = NSClassFromString(@"NSURLSession");
+        if (!cls) return;
+        // NSURLSession hooks can crash if installed inside constructor before class is realized.
+        // Defer to next runloop — by then NSURLSession is fully realized and safe to swizzle.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try {
+                {
+                    SEL sel = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
+                    Method m = class_getInstanceMethod(cls, sel);
+                    if (m) {
+                        OrigNSURLSessionDataTask = method_getImplementation(m);
+                        IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, id handler){
+                            NSMutableURLRequest *mutable = nil;
+                            @try { mutable = [req mutableCopy]; } @catch(__unused NSException *e){}
+                            if (!mutable && req.URL) mutable = [NSMutableURLRequest requestWithURL:req.URL];
+                            if (!mutable) mutable = (NSMutableURLRequest*)req;
+                            QTScrubYouTubeRequest(mutable);
+                            if (OrigNSURLSessionDataTask) return ((id(*)(id,SEL,id,id))OrigNSURLSessionDataTask)(self, sel, mutable ?: req, handler);
+                            return (id)nil;
+                        });
+                        method_setImplementation(m, rep);
+                        QTIntInstalled(@"NSURLSession", @"dataTaskWithRequest:completionHandler:");
+                    }
+                }
+                {
+                    SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
+                    Method m = class_getInstanceMethod(cls, sel);
+                    if (m) {
+                        OrigUploadTaskWithRequest = method_getImplementation(m);
+                        IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
+                            NSMutableURLRequest *mutable = nil;
+                            @try { mutable = [req mutableCopy]; } @catch(__unused NSException *e){}
+                            if (!mutable && req.URL) mutable = [NSMutableURLRequest requestWithURL:req.URL];
+                            if (!mutable) mutable = (NSMutableURLRequest*)req;
+                            QTScrubYouTubeRequest(mutable);
+                            if (OrigUploadTaskWithRequest) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskWithRequest)(self, sel, mutable ?: req, body, handler);
+                            return (id)nil;
+                        });
+                        method_setImplementation(m, rep);
+                        QTIntInstalled(@"NSURLSession", @"uploadTaskWithRequest:fromData:completionHandler:");
+                    }
+                }
+                {
+                    SEL sel = NSSelectorFromString(@"dataTaskWithRequest:");
+                    Method m = class_getInstanceMethod(cls, sel);
+                    if (m) {
+                        OrigDataTaskWithRequestAndDelegate = method_getImplementation(m);
+                        IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req){
+                            NSMutableURLRequest *mutable = nil;
+                            @try { mutable = [req mutableCopy]; } @catch(__unused NSException *e){}
+                            if (!mutable && req.URL) mutable = [NSMutableURLRequest requestWithURL:req.URL];
+                            if (!mutable) mutable = (NSMutableURLRequest*)req;
+                            QTScrubYouTubeRequest(mutable);
+                            if (OrigDataTaskWithRequestAndDelegate) return ((id(*)(id,SEL,id))OrigDataTaskWithRequestAndDelegate)(self, sel, mutable ?: req);
+                            return (id)nil;
+                        });
+                        method_setImplementation(m, rep);
+                        QTIntInstalled(@"NSURLSession", @"dataTaskWithRequest:");
+                    }
+                }
+            } @catch (__unused NSException *e) {}
+        });
+    } @catch (__unused NSException *e) {}
+}
+
+void QTIntegrityEarlyBundleSpoof(void) {
+    // Called synchronously at constructor time — must be crash-proof and minimal.
+    @try {
+        Class c = NSClassFromString(@"NSBundle");
+        if (!c) return;
+        // Only install the cheapest, most essential bundle spoof so YT's +load sees the right ID.
+        // No objc_copyClassList, no SecItem, no dispatch_once here.
+        Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"bundleIdentifier"));
+        if (m1) { OrigBundleIdentifier = method_getImplementation(m1); method_setImplementation(m1, (IMP)QTBundleIdentifier); }
+    } @catch (__unused NSException *e) {}
 }
 
 // ============ main installer ============
 void QTInstallIntegrity(void) {
-    QTIntLog = [NSMutableArray array];
-    // 1. Always install — even on "store" builds, the receipt may still be missing (LiveContainer)
-    QTCurrentAccessGroup(); // prime early
+    @try { if (!QTIntLog) QTIntLog = [NSMutableArray array]; } @catch (__unused NSException *e) { QTIntLog = nil; }
+    // QTCurrentAccessGroup() intentionally NOT called here — deferred to first keychain use.
 
     // 2. UIApplication setDelegate shim
     {
@@ -550,20 +568,24 @@ void QTInstallIntegrity(void) {
         else QTHook(@"UIApplication", @"setDelegate:", @"v@", ^id(IMP old, SEL s){ OrigSetDelegate=old; return ^(id o, id d){ QTSetDelegate(o,s,d); }; });
         QTIntInstalled(@"UIApplication", @"setDelegate:");
     }
-    // 3. NSBundle spoof
-    NSString *realID = NSBundle.mainBundle.bundleIdentifier; // raw, before hook
-    // Always hook bundleIdentifier even if it already matches, to survive re-reads
+    // 3. NSBundle spoof — bundleIdentifier already done in EarlyBundleSpoof, just do the rest.
     {
+        // Check if already swizzled by early path
         Class c = NSClassFromString(@"NSBundle");
-        Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"bundleIdentifier"));
-        if (m1) { OrigBundleIdentifier = method_getImplementation(m1); method_setImplementation(m1, (IMP)QTBundleIdentifier); QTIntInstalled(@"NSBundle", @"bundleIdentifier"); }
+        Method mCheck = class_getInstanceMethod(c, NSSelectorFromString(@"bundleIdentifier"));
+        IMP cur = mCheck ? method_getImplementation(mCheck) : NULL;
+        if (cur != (IMP)QTBundleIdentifier) {
+            Method m1 = class_getInstanceMethod(c, NSSelectorFromString(@"bundleIdentifier"));
+            if (m1) { OrigBundleIdentifier = method_getImplementation(m1); method_setImplementation(m1, (IMP)QTBundleIdentifier); QTIntInstalled(@"NSBundle", @"bundleIdentifier"); }
+        } else {
+            QTIntInstalled(@"NSBundle", @"bundleIdentifier (early)");
+        }
         Method m2 = class_getInstanceMethod(c, NSSelectorFromString(@"infoDictionary"));
         if (m2) { OrigInfoDictionary = method_getImplementation(m2); method_setImplementation(m2, (IMP)QTInfoDictionary); QTIntInstalled(@"NSBundle", @"infoDictionary"); }
         Method m3 = class_getInstanceMethod(c, NSSelectorFromString(@"objectForInfoDictionaryKey:"));
         if (m3) { OrigInfoValue = method_getImplementation(m3); method_setImplementation(m3, (IMP)QTInfoValue); QTIntInstalled(@"NSBundle", @"objectForInfoDictionaryKey:"); }
         Method m4 = class_getClassMethod(c, NSSelectorFromString(@"bundleWithIdentifier:"));
         if (m4) { OrigBundleWithIdentifier = method_getImplementation(m4); method_setImplementation(m4, (IMP)QTBundleWithIdentifier); QTIntInstalled(@"NSBundle", @"bundleWithIdentifier:"); }
-        (void)realID;
     }
     // 4. YTVersionUtils
     {
@@ -646,13 +668,17 @@ void QTInstallIntegrity(void) {
             else QTIntMiss(@"DCAppAttestService", @"*");
         }
     }
-    // 11. BotGuard / PoToken / Integrity generic
-    QTSpoof_BotGuardAndPoToken();
+    // 11. BotGuard / PoToken / Integrity generic — deferred to next runloop so all YT classes are realized
+    // and to avoid heavy objc_copyClassList inside constructor (can deadlock dyld).
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try { QTSpoof_BotGuardAndPoToken(); } @catch (__unused NSException *e) {}
+    });
 
-    // 12. Network header spoof
+    // 12. Network header spoof (already deferred internally)
     QTInstallNetworkSpoof();
 
-    // 13. Additional hardening: spoof receipt presence via NSBundle appStoreReceiptURL
+    // 13. Receipt spoof — deferred: appStoreReceiptURL may be called on background thread.
+    // Creating a file synchronously inside constructor can deadlock. Only swizzle, create lazily.
     {
         Class c = NSClassFromString(@"NSBundle");
         SEL sel = NSSelectorFromString(@"appStoreReceiptURL");
@@ -661,11 +687,14 @@ void QTInstallIntegrity(void) {
             IMP orig = method_getImplementation(m);
             IMP rep = imp_implementationWithBlock(^NSURL*(id self){
                 NSURL *real = ((NSURL*(*)(id,SEL))orig)(self, sel);
-                if (self == NSBundle.mainBundle && !real) {
-                    // Return a fake receipt URL that exists on disk
-                    NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:@"quietube-fake-receipt"];
-                    [[NSFileManager defaultManager] createFileAtPath:tmp contents:[NSData data] attributes:nil];
-                    return [NSURL fileURLWithPath:tmp];
+                if (self == NSBundle.mainBundle && (!real || !real.path.length || ![NSFileManager.defaultManager fileExistsAtPath:real.path])) {
+                    static NSURL *fakeURL;
+                    static dispatch_once_t once;
+                    dispatch_once(&once, ^{
+                        NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:@"quietube-fake-receipt"];
+                        @try { [[NSFileManager defaultManager] createFileAtPath:tmp contents:[NSData data] attributes:nil]; fakeURL = [NSURL fileURLWithPath:tmp]; } @catch (__unused NSException *e) {}
+                    });
+                    return fakeURL ?: real;
                 }
                 return real;
             });
@@ -674,7 +703,7 @@ void QTInstallIntegrity(void) {
         }
     }
 
-    QTCount(@"integrity: installed");
+    @try { QTCount(@"integrity: installed"); } @catch (__unused NSException *e) {}
 }
 
 NSString *QTIntegrityReport(void) {

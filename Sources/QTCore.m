@@ -291,35 +291,58 @@ NSString *QTDiagnostics(void) {
     return s;
 }
 
+void QTIntegrityEarlyBundleSpoof(void);
 __attribute__((constructor)) static void QTStart(void) {
     @autoreleasepool {
-        if (![NSBundle.mainBundle.bundleIdentifier containsString:@"youtube"]) return;
-        QTRegisterDefaults();
-        // Bulletproof integrity: must run before ANY YouTube code reads bundleID / isFromAppStore / attests.
-        // Order: Integrity (bundle + DeviceCheck + PoToken + network) -> PlaybackFix (retry) -> legacy shims
-        QTInstallIntegrity();
-        QTInstallPlaybackFix();
-        QTInstallStreamFallback();
-        QTInstallSideloadFix(); // legacy compat, no-op if Integrity already did it
-        NSString *cache=NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject;
-        if (cache) QTDConfigure([cache stringByAppendingPathComponent:@"QuietTubeDiagnostics"]);
-        NSArray *names=@[UIApplicationDidBecomeActiveNotification,UIApplicationDidEnterBackgroundNotification,UIApplicationDidReceiveMemoryWarningNotification,UIApplicationWillTerminateNotification];
-        for (NSUInteger phase=0;phase<names.count;phase++) {
-            [NSNotificationCenter.defaultCenter addObserverForName:names[phase] object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
-                QTDEvent(QTDEApp,@{@"phase":@(phase)});
-            }];
-        }
-        QTSponsorInstall();
-        // Bounded late-class retries, never scan/realize every Swift class.
-        for (NSNumber *delay in @[@0,@1,@3,@8]) {
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue*NSEC_PER_SEC)),
-                           dispatch_get_main_queue(), ^{
-                QTInstallSettings();
-                if ([[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqualToString:@"21.38.2"])
-                    QTInstallFeatures();
-                else QTStatus(@"version gate", @"Only settings loaded: unsupported YouTube version");
+        @try {
+            // LiveContainer: mainBundle may not be ready yet — use low-level check first.
+            NSString *bid = nil;
+            @try { bid = NSBundle.mainBundle.bundleIdentifier; } @catch (__unused NSException *e) {}
+            if (!bid) {
+                // Fallback: check executable name
+                @try { bid = NSBundle.mainBundle.executablePath; } @catch (__unused NSException *e) {}
+                if (bid && ![bid containsString:@"YouTube"] && ![bid containsString:@"youtube"]) return;
+            } else if (![bid containsString:@"youtube"] && ![bid isEqualToString:@"com.google.ios.youtube"]) {
+                // Not YouTube — do not install.
+                return;
+            }
+            // CRASH FIX: only do minimal bundle spoof synchronously at constructor time.
+            // Everything else is deferred to main queue after dyld and UIKit are ready.
+            @try { QTIntegrityEarlyBundleSpoof(); } @catch (__unused NSException *e) {}
+            dispatch_async(dispatch_get_main_queue(), ^{
+                @autoreleasepool {
+                    @try {
+                        QTRegisterDefaults();
+                        QTInstallIntegrity();
+                        QTInstallPlaybackFix();
+                        QTInstallStreamFallback();
+                        QTInstallSideloadFix();
+                        NSString *cache=NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject;
+                        if (cache) QTDConfigure([cache stringByAppendingPathComponent:@"QuietTubeDiagnostics"]);
+                        NSArray *names=@[UIApplicationDidBecomeActiveNotification,UIApplicationDidEnterBackgroundNotification,UIApplicationDidReceiveMemoryWarningNotification,UIApplicationWillTerminateNotification];
+                        for (NSUInteger phase=0;phase<names.count;phase++) {
+                            [NSNotificationCenter.defaultCenter addObserverForName:names[phase] object:nil queue:nil usingBlock:^(__unused NSNotification *note) {
+                                QTDEvent(QTDEApp,@{@"phase":@(phase)});
+                            }];
+                        }
+                        QTSponsorInstall();
+                        for (NSNumber *delay in @[@0,@1,@3,@8]) {
+                            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(delay.doubleValue*NSEC_PER_SEC)),
+                                           dispatch_get_main_queue(), ^{
+                                @try {
+                                    QTInstallSettings();
+                                    NSString *ver = nil;
+                                    @try { ver = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"]; } @catch (__unused NSException *e) {}
+                                    if ([ver isEqualToString:@"21.38.2"])
+                                        QTInstallFeatures();
+                                    else QTStatus(@"version gate", @"Only settings loaded: unsupported YouTube version");
+                                } @catch (__unused NSException *e) {}
+                            });
+                        }
+                    } @catch (__unused NSException *e) {}
+                }
             });
-        }
+        } @catch (__unused NSException *e) {}
     }
 }
 

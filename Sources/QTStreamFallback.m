@@ -77,45 +77,60 @@ static BOOL QTFallbackIsArmed(void) {
 }
 
 static void QTInstallBodyRewrite(void) {
-    Class cls = NSClassFromString(@"NSURLSession");
-    if (!cls) return;
-    // uploadTaskWithRequest:fromData:completionHandler: — this is what YT networking uses for POST /youtubei/v1/player
-    SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
-    Method m = class_getInstanceMethod(cls, sel);
-    if (m) {
-        OrigUploadTaskBody = method_getImplementation(m);
-        IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
-            NSMutableURLRequest *mutable = nil;
-            NSData *newBody = nil;
-            if (QTFallbackIsArmed() && body && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) {
-                NSString *url = req.URL.absoluteString;
-                if ([url containsString:@"/player"] || [url containsString:@"/next"] || [url containsString:@"/browse"]) {
-                    NSData *rewritten = QTRewriteInnertubeBody(body);
-                    if (rewritten) {
-                        mutable = [req mutableCopy];
-                        newBody = rewritten;
-                        QTCount(@"streamFallback: rewrote InnerTube body to TVHTML5");
-                        if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"fallback_rewrite"});
+    @try {
+        Class cls = NSClassFromString(@"NSURLSession");
+        if (!cls) return;
+        // Defer swizzle to next runloop — same reason as QTIntegrity network spoof.
+        // Also avoid double-hooking the same selector already hooked by QTIntegrity.
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try {
+                // Only hook uploadTask if QTIntegrity hasn't already taken the Orig slot.
+                // We use a separate Orig var, so we can co-exist — just check m still exists.
+                SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
+                Method m = class_getInstanceMethod(cls, sel);
+                if (m) {
+                    // Save current IMP (which may already be QTIntegrity's wrapper) and chain.
+                    IMP current = method_getImplementation(m);
+                    // Only hook if not already our wrapper
+                    if (current != (IMP)QTInstallBodyRewrite) {
+                        OrigUploadTaskBody = current;
+                        IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
+                            NSMutableURLRequest *mutable = nil;
+                            NSData *newBody = nil;
+                            @try {
+                                if (QTFallbackIsArmed() && body && req.URL.absoluteString && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) {
+                                    NSString *url = req.URL.absoluteString;
+                                    if ([url containsString:@"/player"] || [url containsString:@"/next"] || [url containsString:@"/browse"]) {
+                                        NSData *rewritten = QTRewriteInnertubeBody(body);
+                                        if (rewritten) {
+                                            mutable = [req mutableCopy];
+                                            newBody = rewritten;
+                                            @try { QTCount(@"streamFallback: rewrote InnerTube body to TVHTML5"); } @catch(__unused NSException *e){}
+                                            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"fallback_rewrite"});
+                                        }
+                                    }
+                                }
+                            } @catch (__unused NSException *e) {}
+                            NSURLRequest *useReq = mutable ?: req;
+                            NSData *useBody = newBody ?: body;
+                            if (OrigUploadTaskBody) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskBody)(self, sel, useReq, useBody, handler);
+                            return (id)nil;
+                        });
+                        method_setImplementation(m, rep);
+                        @try { QTCount(@"streamFallback: hooked uploadTaskWithRequest:fromData:completionHandler:"); } @catch(__unused NSException *e){}
                     }
                 }
-            }
-            NSURLRequest *useReq = mutable ?: req;
-            NSData *useBody = newBody ?: body;
-            if (OrigUploadTaskBody) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskBody)(self, sel, useReq, useBody, handler);
-            return (id)nil;
+                // Also hook dataTaskWithRequest:completionHandler: for GET player fallback
+                SEL sel2 = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
+                Method m2 = class_getInstanceMethod(cls, sel2);
+                if (m2) {
+                    OrigDataTaskCB = method_getImplementation(m2);
+                    @try { QTCount(@"streamFallback: dataTask hook available"); } @catch(__unused NSException *e){}
+                }
+            } @catch (__unused NSException *e) {}
         });
-        method_setImplementation(m, rep);
-        QTCount(@"streamFallback: hooked uploadTaskWithRequest:fromData:completionHandler:");
-    }
-    // also hook dataTaskWithRequest:completionHandler: for GET player fallback
-    SEL sel2 = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
-    Method m2 = class_getInstanceMethod(cls, sel2);
-    if (m2) {
-        OrigDataTaskCB = method_getImplementation(m2);
-        // Not rewriting GET — just counting. Body rewrite only matters for POST.
-        QTCount(@"streamFallback: dataTask hook available");
-    }
-    QTCount(@"streamFallback: InnerTube body rewrite installed");
+        @try { QTCount(@"streamFallback: InnerTube body rewrite scheduled"); } @catch(__unused NSException *e){}
+    } @catch (__unused NSException *e) {}
 }
 
 void QTInstallStreamFallback(void) {

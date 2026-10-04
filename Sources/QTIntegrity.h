@@ -4,5 +4,6 @@
 // GUL/Firebase, keychain, group container, BotGuard JS, and network context.
 // All hooks are class-scan driven so renames in future YT builds still hit.
 void QTInstallIntegrity(void);
+void QTIntegrityEarlyBundleSpoof(void);
 BOOL QTIntegrityIsSideloaded(void);
 NSString *QTIntegrityReport(void);

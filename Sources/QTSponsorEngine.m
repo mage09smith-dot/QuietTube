@@ -88,6 +88,8 @@ static NSString *QTEFindViaGIMMe(void) {
 // Undo stack — last 8 skips, repeatable
 static NSMutableArray<NSDictionary*> *QTEUndoStack; // each: @{seg:..., from:..., idx:...}
 static const NSUInteger QTEUndoCap = 8;
+static NSMutableSet<NSNumber*> *QTEUndoGrace; // indices currently in grace (play through once)
+static NSMutableDictionary<NSNumber*,NSNumber*> *QTEUndoGraceEnds; // idx -> end time
 void QTEUndoLastSkip(void) {
     @try {
         if (!QTEUndoStack.count || !QTEController) return;
@@ -100,9 +102,22 @@ void QTEUndoLastSkip(void) {
             NSArray *r = seg[@"segment"];
             if ([r isKindOfClass:NSArray.class] && r.count>=1) start = [r[0] doubleValue];
         }
+        double end = [seg[@"end"] doubleValue];
+        if (!seg[@"end"]) {
+            NSArray *r = seg[@"segment"];
+            if ([r isKindOfClass:NSArray.class] && r.count>=2) end = [r[1] doubleValue];
+        }
         double target = MAX(0, start - 0.45);
         NSNumber *idx = entry[@"idx"];
-        if (idx && QTESkippedTokens) [QTESkippedTokens removeObject:idx];
+        // Put into grace: do not re-skip this segment until we have played past its end
+        if (!QTEUndoGrace) QTEUndoGrace = [NSMutableSet set];
+        if (!QTEUndoGraceEnds) QTEUndoGraceEnds = [NSMutableDictionary dictionary];
+        if (idx) {
+            [QTEUndoGrace addObject:idx];
+            QTEUndoGraceEnds[idx] = @(end);
+            // Also remove from skipped so we don't immediately think it's still skipped
+            if (QTESkippedTokens) [QTESkippedTokens removeObject:idx];
+        }
         id ctrl = QTEController;
         SEL sel = NSSelectorFromString(@"seekToTime:");
         @try {
@@ -112,7 +127,8 @@ void QTEUndoLastSkip(void) {
                 if ([ctrl respondsToSelector:alt]) ((void(*)(id,SEL,double))objc_msgSend)(ctrl, alt, target);
             }
         } @catch (__unused NSException *e) {}
-        QTCount(@"sponsorSkip: undo");
+        QTCount(@"sponsorSkip: undo grace");
+        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result":@"undo_grace", @"category":seg[@"category"]?:@"sponsor", @"start":@((long long)(start*1000)), @"end":@((long long)(end*1000))});
     } @catch (__unused NSException *e) {}
 }
 static void QTEPushUndo(NSDictionary *seg, NSUInteger idx, double from) {
@@ -121,6 +137,19 @@ static void QTEPushUndo(NSDictionary *seg, NSUInteger idx, double from) {
         if (QTEUndoStack.count >= QTEUndoCap) [QTEUndoStack removeObjectAtIndex:0];
         [QTEUndoStack addObject:@{@"seg": seg, @"idx": @(idx), @"from": @(from)}];
     } @catch (__unused NSException *e) {}
+}
+static BOOL QTEIsInUndoGrace(NSNumber *idx, double time) {
+    if (!idx || !QTEUndoGrace || ![QTEUndoGrace containsObject:idx]) return NO;
+    NSNumber *end = QTEUndoGraceEnds[idx];
+    if (!end) return YES;
+    if (time > [end doubleValue] + 1.2) {
+        // Passed grace — remove
+        [QTEUndoGrace removeObject:idx];
+        [QTEUndoGraceEnds removeObjectForKey:idx];
+        if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result":@"grace_expired", @"start":@((long long)(time*1000))});
+        return NO;
+    }
+    return YES;
 }
 
 static void QTESeekTo(id controller, double t) {
@@ -353,6 +382,16 @@ static void QTEEvaluate(id controller, double time) {
         NSString *cat=seg[@"category"]?:@"sponsor";
         NSNumber *token=@(idx);
         if (time < start - 1.0) [QTESkippedTokens removeObject:token];
+        // Undo grace: after user taps Undo, play through the segment once
+        if (QTEIsInUndoGrace(token, time)) return;
+        if (time < start - 1.0) {
+            [QTESkippedTokens removeObject:token];
+            // also clear grace if they seeked back far
+            if (QTEUndoGrace && [QTEUndoGrace containsObject:token]) {
+                [QTEUndoGrace removeObject:token];
+                [QTEUndoGraceEnds removeObjectForKey:token];
+            }
+        }
         if (time >= start && time < end - 0.35 && ![QTESkippedTokens containsObject:token]) {
             [QTESkippedTokens addObject:token];
             didSkip=YES;

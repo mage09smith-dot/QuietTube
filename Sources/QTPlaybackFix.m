@@ -29,12 +29,6 @@ static NSUInteger QTFixSeekSuppressed = 0;
 static NSTimeInterval QTFixLastStallAt = 0;
 static NSUInteger QTFixConsecutiveStalls = 0;
 
-// forward
-static void QTSendRetryEvent(id overlay, NSString *stage);
-static BOOL QTReloadPlayer(id pvc, NSString *stage);
-static void QTSeek(id player, double pos, NSString *stage);
-static double QTPosition(id player);
-
 static double QTCurrentVideoMediaTime(id self, SEL _cmd) {
     double v = OrigCurrentVideoMediaTime ? ((double(*)(id,SEL))OrigCurrentVideoMediaTime)(self,_cmd) : 0;
     QTLatestTime = v;
@@ -167,7 +161,19 @@ static NSInteger QTErrorCodeForRetry(NSError *err) {
     return -1;
 }
 static void QTHandleError(id self, SEL _cmd, id error) {
-    QTDError(error);
+    // Detailed pipeline input logging — code/domain/userInfo keys, underlying error, and handleError call site
+    @try {
+        if ([error isKindOfClass:NSError.class]) {
+            NSError *e = (NSError*)error;
+            NSString *uiKeys = [[e.userInfo allKeys] componentsJoinedByString:@","];
+            id underlying = e.userInfo[NSUnderlyingErrorKey];
+            NSString *uDesc = [underlying isKindOfClass:NSError.class] ? [NSString stringWithFormat:@"%@:%ld", ((NSError*)underlying).domain, (long)((NSError*)underlying).code] : (underlying ? NSStringFromClass([underlying class]) : @"nil");
+            if (QTDEnabled()) QTDEvent(QTDEPlaybackError, @{@"code":@(e.code), @"domain":@([e.domain isEqualToString:QTPlaybackErrorDomain]?1:0), @"depth":@0, @"result": e.localizedDescription?:@"", @"prefix": uiKeys?:@"", @"category": uDesc?:@"nil"});
+            QTDError(error);
+        } else {
+            QTDError(error);
+        }
+    } @catch (__unused NSException *ex) { QTDError(error); }
     if ([error isKindOfClass:NSError.class]) {
         QTAdPlaybackError(error);
         NSString *kind = [((NSError*)error).domain isEqualToString:QTPlaybackErrorDomain] ? @"YouTube" : @"other";
@@ -179,18 +185,29 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
-    // Guard 1: if user is actively scrubbing, suppress retry briefly.
-    // Do NOT suppress unbuffered-range seeks for long — they need a buffered reload, not a loop.
-    NSTimeInterval sinceSeek = CACurrentMediaTime() - QTLastSeekTime;
-    if (sinceSeek < 0.45 && QTSeekBurstCount >= 3) {
-        QTFixSeekSuppressed++;
+    // If WEB mode is already on, do NOT reload-loop — WEB should not produce code 14.
+    // If it still does, log heavily and only nudge once, then stop retrying.
+    if ([[NSUserDefaults standardUserDefaults] boolForKey:@"QuietTube.v1.useWebClient"]) {
+        if (QTDEnabled()) QTDEvent(QTDEPlaybackError, @{@"code":@(err.code), @"domain":@1, @"depth":@99, @"result":@"web_mode_stall_unexpected"});
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
-    // Guard 2: don't retry if we just retried (avoid circular retry spinner in your screenshot)
+    NSTimeInterval sinceSeek = CACurrentMediaTime() - QTLastSeekTime;
+    if (sinceSeek < 0.45 && QTSeekBurstCount >= 3) {
+        QTFixSeekSuppressed++;
+        if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"seek_suppressed"});
+        QTCallOriginalHandleError(self,_cmd,error);
+        return;
+    }
     NSTimeInterval sinceRetry = CACurrentMediaTime() - QTLastRetryAt;
+    // Kill 15s loop: once we have hit 3 consecutive stalls within 60s, stop retrying and nudge to WEB.
+    if (QTFixConsecutiveStalls >= 3 && (CACurrentMediaTime() - QTFixLastStallAt) < 60) {
+        if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"stall_loop_killed"});
+        QTShowWebPlayerNudge();
+        QTCallOriginalHandleError(self,_cmd,error);
+        return;
+    }
     if (QTIsRetrying || (sinceRetry < 1.2 && QTRetryCount > 0)) {
-        // If user is in persistent failure, nudge toward WEB toggle exactly once
         NSTimeInterval sinceStall = CACurrentMediaTime() - QTFixLastStallAt;
         if (sinceStall < 45 && QTFixConsecutiveStalls >= 2) QTShowWebPlayerNudge();
         QTCallOriginalHandleError(self,_cmd,error);
@@ -201,6 +218,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
     QTFixConsecutiveStalls++;
     QTFixLastStallAt = CACurrentMediaTime();
     QTRetryCount++;
+    if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"retry_start saved=%.2f stall#%lu", saved, (unsigned long)QTFixConsecutiveStalls]});
 
     SEL pg = NSSelectorFromString(@"parentViewController");
     id pvc = [self respondsToSelector:pg] ? ((id(*)(id,SEL))objc_msgSend)(self, pg) : nil;
@@ -208,10 +226,12 @@ static void QTHandleError(id self, SEL _cmd, id error) {
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         double moved = QTPosition(pvc);
+        if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"retry_check saved=%.2f moved=%.2f", saved, moved]});
         if (moved > saved + 0.15) {
             QTIsRetrying = NO;
             QTFixStallRecovered++;
             QTFixConsecutiveStalls = 0;
+            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"stall_recovered"});
             return;
         }
         // still stalled -> retry

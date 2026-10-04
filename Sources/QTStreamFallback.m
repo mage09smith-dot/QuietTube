@@ -117,28 +117,41 @@ static void QTInstallBodyRewrite(void) {
                 SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
                 Method m = class_getInstanceMethod(cls, sel);
                 if (m) {
-                    // Save current IMP (which may already be QTIntegrity's wrapper) and chain.
                     IMP current = method_getImplementation(m);
-                    // Only hook if not already our wrapper
                     if (current != (IMP)QTInstallBodyRewrite) {
                         OrigUploadTaskBody = current;
                         IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
                             NSMutableURLRequest *mutable = nil;
                             NSData *newBody = nil;
+                            BOOL didRewrite = NO;
+                            NSString *origClient = nil;
                             @try {
                                 if (QTFallbackIsArmed() && body && req.URL.absoluteString && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) {
                                     NSString *url = req.URL.absoluteString;
                                     if ([url containsString:@"/player"] || [url containsString:@"/next"] || [url containsString:@"/browse"]) {
+                                        // Peek original client for logging
+                                        @try {
+                                            id j0 = [NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
+                                            if ([j0 isKindOfClass:NSDictionary.class]) origClient = j0[@"context"][@"client"][@"clientName"];
+                                        } @catch(__unused NSException *e){}
                                         NSData *rewritten = QTRewriteInnertubeBody(body);
                                         if (rewritten) {
                                             mutable = [req mutableCopy];
                                             newBody = rewritten;
-                                            @try { QTCount(@"streamFallback: rewrote InnerTube body to TVHTML5"); } @catch(__unused NSException *e){}
-                                            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":@"fallback_rewrite"});
+                                            didRewrite = YES;
+                                            @try { QTCount(@"streamFallback: rewrote InnerTube body to WEB"); } @catch(__unused NSException *e){}
+                                            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description": didRewrite?@"fallback_rewrite_WEB":@"fallback_rewrite", @"ad":@(didRewrite), @"scope":@(QTFallbackUseWebClient?1:0)});
                                         }
                                     }
                                 }
                             } @catch (__unused NSException *e) {}
+                            // Detailed request logging when WEB mode is on (helps prove replacement)
+                            @try {
+                                if (QTDEnabled() && body && req.URL.absoluteString && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"] && [req.URL.absoluteString containsString:@"/player"]) {
+                                    NSString *mode = QTFallbackUseWebClient?@"WEB":@"transient";
+                                    QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"player_req mode=%@ orig=%@ rewrote=%@", mode, origClient?:@"?", didRewrite?@"yes":@"no"]});
+                                }
+                            } @catch(__unused NSException *e){}
                             NSURLRequest *useReq = mutable ?: req;
                             NSData *useBody = newBody ?: body;
                             if (OrigUploadTaskBody) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskBody)(self, sel, useReq, useBody, handler);
@@ -164,13 +177,26 @@ static void QTInstallBodyRewrite(void) {
 void QTInstallStreamFallback(void) {
     if (QTFallbackInstalled) return;
     QTFallbackInstalled=YES;
-    QTFallbackUseWebClient = [[NSUserDefaults standardUserDefaults] boolForKey:QTWebClientKey];
+    // Read canonical first, fall back to legacy key.  Default ON if absent (fresh exp37).
+    NSString *canon = @"QuietTube.v1.useWebClient";
+    id v = [[NSUserDefaults standardUserDefaults] objectForKey:canon];
+    if (v == nil) v = [[NSUserDefaults standardUserDefaults] objectForKey:QTWebClientKey];
+    if (v == nil) {
+        QTFallbackUseWebClient = YES;
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:canon];
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:QTWebClientKey];
+    } else {
+        QTFallbackUseWebClient = [v boolValue];
+    }
     if (QTFallbackUseWebClient) {
         QTFallbackArmed = YES;
         QTFallbackArmUntil = [NSDate date].timeIntervalSince1970 + 3600*24*365;
     }
     QTInstallBodyRewrite();
-    @try { QTCount(QTFallbackUseWebClient ? @"streamFallback: installed (WEB persistent)" : @"streamFallback: installed"); } @catch(__unused NSException *e){}
+    @try {
+        QTCount(QTFallbackUseWebClient ? @"streamFallback: installed (WEB persistent)" : @"streamFallback: installed");
+        if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description": QTFallbackUseWebClient?@"fallback_mode_WEB":@"fallback_mode_transient"});
+    } @catch(__unused NSException *e){}
 }
 
 BOOL QTStreamFallbackHandleError(id overlay, NSError *error, double savedTime) {

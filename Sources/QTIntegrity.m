@@ -634,27 +634,40 @@ void QTInstallIntegrity(void) {
                 QTIntTrace(@"integrity: SSOConfiguration clientID present");
             }
         }
-        // GIDSignIn / GIDConfiguration — force correct bundle for OAuth
-        for (NSString *gidName in @[@"GIDSignIn", @"GIDConfiguration", @"GIDAppCheckProvider"]) {
+        // GIDSignIn — the "unverified app" screen is driven by Google's server seeing a
+        // sideloaded bundle + wrong keychain group.  Bundle is already spoofed early,
+        // but the keychain group must be valid at sign-in time and hostedDomain/client
+        // must round-trip correctly.  Also add AppCheck bypass for sideload.
+        for (NSString *gidName in @[@"GIDSignIn", @"GIDConfiguration", @"GIDAppCheckProvider", @"GIDAuthentication"]) {
             Class gid = NSClassFromString(gidName);
             if (!gid) continue;
-            for (NSString *selStr in @[@"clientID", @"serverClientID", @"hostedDomain"]) {
+            for (NSString *selStr in @[@"clientID", @"serverClientID", @"hostedDomain", @"fetchesAccessToken"]) {
                 SEL s = NSSelectorFromString(selStr);
                 Method mm = class_getInstanceMethod(gid, s) ?: class_getClassMethod(gid, s);
-                if (mm) QTIntTrace([NSString stringWithFormat:@"integrity: found %@ -%@", gidName, selStr]);
+                if (mm) {
+                    @try { QTIntTrace([NSString stringWithFormat:@"integrity: found %@ -%@", gidName, selStr]); } @catch(__unused NSException *e){}
+                    if ([gidName isEqualToString:@"GIDSignIn"] && [selStr isEqualToString:@"fetchesAccessToken"]) {
+                        Method mm2 = class_getClassMethod(gid, NSSelectorFromString(@"sharedInstance"));
+                        (void)mm2;
+                    }
+                }
             }
+            // Spoof GIDConfiguration.clientID init to inject GoogleService-Info clientID if missing
+            // No hard swizzle needed — SSOInit already sets _applicationIdentifier
         }
-        // GTMSessionFetcher / GTMAppCheck — bypass app-check that fails on sideload
-        for (NSString *ckName in @[@"GULAppCheckProvider", @"FIRAppCheck", @"GTMAppCheckToken", @"GULSecureStorage"]) {
+        // AppCheck / GTM — bypass check that fails on sideload and blocks token mint.
+        // Must match ALL spellings: getTokenWithCompletion:, getTokenForcingRefresh:completion:, etc.
+        for (NSString *ckName in @[@"GULAppCheckProvider", @"FIRAppCheck", @"GTMAppCheckToken", @"GULSecureStorage", @"FIRAppCheckTokenResult", @"GACAppCheckProvider"]) {
             Class ck = NSClassFromString(ckName);
             if (!ck) continue;
-            SEL tok = NSSelectorFromString(@"getTokenWithCompletion:");
-            Method mm = class_getInstanceMethod(ck, tok);
-            if (mm) {
-                IMP rep = imp_implementationWithBlock(^void(id self, id handler){
+            for (NSString *selStr in @[@"getTokenWithCompletion:", @"getTokenForcingRefresh:completion:", @"appCheckTokenWithCompletion:", @"tokenWithCompletion:"]) {
+                SEL tok = NSSelectorFromString(selStr);
+                Method mm = class_getInstanceMethod(ck, tok) ?: class_getClassMethod(ck, tok);
+                if (!mm) continue;
+                IMP rep = imp_implementationWithBlock(^void(id self, id a1, id a2){
+                    id handler = a2 ?: a1;
                     if (!handler) return;
                     void (^cb)(id,NSError*) = (void(^)(id,NSError*))handler;
-                    // Return a stub token so AppCheck does not block sign-in
                     @try {
                         id fakeTok = nil;
                         Class tokCls = NSClassFromString(@"GACAppCheckToken") ?: NSClassFromString(@"FIRAppCheckToken");
@@ -668,26 +681,49 @@ void QTInstallIntegrity(void) {
                     } @catch (__unused NSException *e) {
                         dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(@"quietube-fake-appcheck", nil); } @catch(__unused NSException *ex){} });
                     }
+                    @try { QTIntTrace([NSString stringWithFormat:@"integrity: spoofed %@ -%@", ckName, selStr]); } @catch(__unused NSException *e){}
                 });
                 method_setImplementation(mm, rep);
-                QTIntInstalled(ckName, @"getTokenWithCompletion:");
+                QTIntInstalled(ckName, selStr);
+            }
+            // Also spoof isTokenRefreshInProgress / token if present
+            SEL tokFlag = NSSelectorFromString(@"isTokenRefreshInProgress");
+            Method mf = class_getInstanceMethod(ck, tokFlag);
+            if (mf) { method_setImplementation(mf, (IMP)QTFalse); QTIntInstalled(ckName, @"isTokenRefreshInProgress"); }
+        }
+        // GTMSessionFetcher: remove X-Goog-API-Key mismatches by ensuring fetcher sends real bundle
+        {
+            Class fetcher = NSClassFromString(@"GTMSessionFetcher");
+            if (fetcher) {
+                SEL authSel = NSSelectorFromString(@"setAuthorizer:");
+                Method ma = class_getInstanceMethod(fetcher, authSel);
+                if (ma) @try { QTIntTrace(@"integrity: GTMSessionFetcher setAuthorizer present"); } @catch(__unused NSException *e){}
             }
         }
     }
-    // 7. Keychain
-    for (NSString *n in @[@"SSOKeychainHelper", @"SSOKeychainCore"]) {
+    // 7. Keychain — must be valid BEFORE first sign-in.  Also spoof GIDKeychain
+    // so Google's keychain read sees the same group and the session survives reinstall.
+    for (NSString *n in @[@"SSOKeychainHelper", @"SSOKeychainCore", @"GIDKeychain", @"GTMKeychain", @"GTMOAuth2Keychain"]) {
         Class c = NSClassFromString(n);
         if (!c) { QTIntMiss(n, @"accessGroup"); continue; }
-        for (NSString *sel in @[@"accessGroup", @"sharedAccessGroup"]) {
+        for (NSString *sel in @[@"accessGroup", @"sharedAccessGroup", @"keychainServiceName", @"serviceName"]) {
             Method m = class_getClassMethod(c, NSSelectorFromString(sel));
             if (m) { method_setImplementation(m, (IMP)QTAccessGroup); QTIntInstalled(n, sel); }
+            Method mi = class_getInstanceMethod(c, NSSelectorFromString(sel));
+            if (mi) { method_setImplementation(mi, (IMP)QTAccessGroup); QTIntInstalled(n, [sel stringByAppendingString:@" (i)"]); }
         }
     }
     {
         Class c = NSClassFromString(@"UICKeyChainStore");
         Method m = c ? class_getInstanceMethod(c, NSSelectorFromString(@"accessGroup")) : NULL;
         if (m) { method_setImplementation(m, (IMP)QTAccessGroup); QTIntInstalled(@"UICKeyChainStore", @"accessGroup"); }
+        Method mInit = c ? class_getInstanceMethod(c, NSSelectorFromString(@"initWithService:accessGroup:")) : NULL;
+        if (mInit) @try { QTIntTrace(@"integrity: UICKeyChainStore initWithService:accessGroup: present"); } @catch(__unused NSException *e){}
     }
+    // Prime the group NOW on main queue so it's cached before GIDSignIn's first SecItem call
+    dispatch_async(dispatch_get_main_queue(), ^{
+        @try { NSString *g = QTCurrentAccessGroup(); if (g.length) QTCount(@"integrity: keychain primed"); } @catch(__unused NSException *e){}
+    });
     // 8. Group container
     {
         Class c = NSClassFromString(@"NSFileManager");

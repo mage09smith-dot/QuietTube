@@ -68,11 +68,9 @@
         }
         if ([self.group isEqualToString:@"Playback"]) {
             NSMutableArray *pb=[NSMutableArray array];
-            // Keep original playback rows first
             [pb addObjectsFromArray:rows];
-            // Dedup: only add useWebClient if not already present in catalog
             BOOL hasWeb = NO; for (NSDictionary *r in rows) if ([r[@"key"] isEqualToString:@"useWebClient"]) hasWeb = YES;
-            if (!hasWeb) [pb addObject:@{@"title":@"Switch to Web Player",@"key":@"useWebClient",@"note":@"Fixes 'Something went wrong' by using YouTube's WEB player internally (like web + uBlock). Fewer errors, same SponsorSkip. Restart required. Off by default."}];
+            if (!hasWeb) [pb addObject:@{@"title":@"Switch to Web Player",@"key":@"useWebClient",@"note":@"Fixes 'Something went wrong' by using the WEB player internally (like web + uBlock). On by default in this build. Restart required. SponsorSkip still works."}];
             rows=pb;
         }
         self.rows=rows;

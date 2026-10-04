@@ -97,7 +97,7 @@ void QTRegisterDefaults(void) {
     if (isExp) {
         // Testing exp.12: force ALL tweaks ON + SponsorSkip master ON + logging ON for easy testing
         // Do a one-time migration for existing installs where they were OFF (see your exp.11 log: autoplay/background off, sponsorSkip off)
-        NSString *migratedKey = @"QuietTube.v1.exp34.migrated";
+        NSString *migratedKey = @"QuietTube.v1.exp37.migrated";
         BOOL alreadyMigrated = [d boolForKey:migratedKey];
         if (!alreadyMigrated) {
             for (NSDictionary *o in QTOptions()) {
@@ -108,21 +108,26 @@ void QTRegisterDefaults(void) {
             [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"sponsorSkip"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"]];
+            // Seed useWebClient ON for fresh exp37 installs — will be re-ensured below for upgrades
+            [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"useWebClient"]];
             [d setBool:YES forKey:@"QuietTube.v1.enhancedLogging"];
             [d setBool:YES forKey:migratedKey];
         } else {
-            // exp.15 testing: also force OFF->ON for existing installs (your exp.14 screenshots still showed Off)
-            // This one-time re-force ensures your 1.1.0 defaults flip to ON
             for (NSDictionary *o in QTOptions()) {
                 NSString *full = [QTPrefix stringByAppendingString:o[@"key"]];
                 if (![d boolForKey:full]) [d setBool:YES forKey:full];
             }
             if (![d boolForKey:[QTPrefix stringByAppendingString:@"enabled"]]) [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"enabled"]];
-            // Keep sponsor children OFF for testing as you requested
             [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"sponsorSkip"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"]];
             [d setBool:YES forKey:@"QuietTube.v1.enhancedLogging"];
+            // Ensure useWebClient is present for upgrades that never set it
+            if ([d objectForKey:[QTPrefix stringByAppendingString:@"useWebClient"]]==nil) {
+                // If they never touched it and it was absent, default ON; if legacy exists respect it
+                id legacyVal = [d objectForKey:@"QuietTube.v1.useWebClient"];
+                [d setBool:legacyVal ? [legacyVal boolValue] : YES forKey:[QTPrefix stringByAppendingString:@"useWebClient"]];
+            }
         }
     } else {
         // Stable defaults: off, preserve existing on upgrade
@@ -131,20 +136,24 @@ void QTRegisterDefaults(void) {
             if ([d objectForKey:full]==nil) [d setBool:NO forKey:full];
         }
     }
-    // WEB client toggle is outside QTOptions() — register explicitly so it persists.
-    // Previous exp35 stored under QuietTube.v1.useWebClient via QTStreamFallback; consolidate to QTPrefix.
+    // useWebClient — default ON to permanently prevent PoToken stalls.
+    // Canonical key is QuietTube.v1.useWebClient.  For exp36->exp37 migration,
+    // respect an explicit OFF the user set; otherwise flip absent to ON.
     {
-        NSString *legacy = @"QuietTube.v1.useWebClient";
         NSString *canonical = [QTPrefix stringByAppendingString:@"useWebClient"];
-        if ([d objectForKey:canonical]==nil) {
-            id v = [d objectForKey:legacy];
-            if (v != nil) [d setBool:[v boolValue] forKey:canonical];
-            else [d setBool:NO forKey:canonical];
-        }
-        if ([d objectForKey:legacy]==nil && [d objectForKey:canonical]!=nil) {
-            // mirror for StreamFallback readers that still check legacy key
+        NSString *legacy = @"QuietTube.v1.useWebClient";
+        BOOL hasCanonical = ([d objectForKey:canonical] != nil);
+        BOOL hasLegacy = ([d objectForKey:legacy] != nil);
+        if (!hasCanonical && !hasLegacy) {
+            [d setBool:YES forKey:canonical];
+            [d setBool:YES forKey:legacy];
+        } else if (!hasCanonical && hasLegacy) {
+            [d setBool:[d boolForKey:legacy] forKey:canonical];
+        } else if (hasCanonical && !hasLegacy) {
             [d setBool:[d boolForKey:canonical] forKey:legacy];
         }
+        // One-time correction for exp36 users stuck on OFF: log but do NOT
+        // force if they explicitly chose OFF — respect their save.
     }
     NSMutableDictionary *active = [NSMutableDictionary dictionary];
     active[@"enabled"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"enabled"]]);

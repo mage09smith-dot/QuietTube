@@ -26,6 +26,8 @@ static NSUInteger QTRetryCount = 0;
 static NSUInteger QTFixStallRecovered = 0;
 static NSUInteger QTFixEmergencyRetried = 0;
 static NSUInteger QTFixSeekSuppressed = 0;
+static NSTimeInterval QTFixLastStallAt = 0;
+static NSUInteger QTFixConsecutiveStalls = 0;
 
 // forward
 static void QTSendRetryEvent(id overlay, NSString *stage);
@@ -40,25 +42,21 @@ static double QTCurrentVideoMediaTime(id self, SEL _cmd) {
 }
 static void QTSeekToTime(id self, SEL _cmd, double t) {
     NSTimeInterval now = CACurrentMediaTime();
-    // Seek coalescing: rapid scrubbing should not re-trigger sponsor/stall logic.
+    // Seek storm detection — but never hide the latest position from recovery.
+    // Always update QTLatestTime so a later retry seeks to where the user ended.
+    QTLatestTime = t;
     if (now - QTLastSeekTime < 0.22) {
         QTSeekBurstCount++;
-        if (QTSeekBurstCount <= 2) {
-            // Let first couple seeks through
-        } else {
-            // Suppress stall detection briefly during seek storm
+        if (QTSeekBurstCount > 2) {
             QTLastSeekTime = now;
             QTFixSeekSuppressed++;
-            // Still update time so reload position is correct
-            QTLatestTime = t;
-            if (OrigSeekToTime) ((void(*)(id,SEL,double))OrigSeekToTime)(self,_cmd,t);
-            return;
+        } else {
+            QTLastSeekTime = now;
         }
     } else {
         QTSeekBurstCount = 0;
+        QTLastSeekTime = now;
     }
-    QTLastSeekTime = now;
-    QTLatestTime = t;
     if (OrigSeekToTime) ((void(*)(id,SEL,double))OrigSeekToTime)(self,_cmd,t);
 }
 static void QTCallOriginalHandleError(id self, SEL _cmd, id err) {
@@ -128,10 +126,43 @@ static void QTScheduleCaptionRestore(id player) {
     }
 }
 
+static void QTShowWebPlayerNudge(void) {
+    @try {
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"QuietTube.v1.useWebClient"]) return;
+        if ([[NSUserDefaults standardUserDefaults] boolForKey:@"QuietTube.v1.webNudgeShown"]) return;
+        [[NSUserDefaults standardUserDefaults] setBool:YES forKey:@"QuietTube.v1.webNudgeShown"];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            @try {
+                UIWindow *win = nil;
+                for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+                    if (![sc isKindOfClass:UIWindowScene.class]) continue;
+                    UIWindowScene *ws = (UIWindowScene*)sc;
+                    if (ws.activationState != UISceneActivationStateForegroundActive) continue;
+                    for (UIWindow *w in ws.windows) if (w.isKeyWindow) { win = w; break; }
+                    if (win) break;
+                }
+                UIViewController *top = win.rootViewController;
+                while (top.presentedViewController) top = top.presentedViewController;
+                if (!top) return;
+                UIAlertController *a = [UIAlertController alertControllerWithTitle:@"Playback error" message:@"YouTube showed 'Something went wrong'. Turn on Switch to Web Player in Quiet Controls -> Playback and restart to prevent this. (Like web + uBlock, Web player avoids the PoToken check.)" preferredStyle:UIAlertControllerStyleAlert];
+                [a addAction:[UIAlertAction actionWithTitle:@"OK" style:UIAlertActionStyleDefault handler:nil]];
+                [a addAction:[UIAlertAction actionWithTitle:@"Open Quiet Controls" style:UIAlertActionStyleDefault handler:^(__unused UIAlertAction *act){
+                    @try {
+                        UIViewController *page = QTSettingsController();
+                        UINavigationController *nav = [[UINavigationController alloc] initWithRootViewController:page];
+                        nav.modalPresentationStyle = UIModalPresentationPageSheet;
+                        [top presentViewController:nav animated:YES completion:nil];
+                    } @catch (__unused NSException *e) {}
+                }]];
+                [top presentViewController:a animated:YES completion:nil];
+            } @catch (__unused NSException *e) {}
+        });
+    } @catch (__unused NSException *e) {}
+}
+
 static NSInteger QTErrorCodeForRetry(NSError *err) {
     if (!err || ![err.domain isEqualToString:QTPlaybackErrorDomain]) return -1;
     if (err.code==14 || err.code==0) return (NSInteger)err.code;
-    // also retry code 5 (network) on sideload where PoToken caused stream failure
     if (err.code==5) return (NSInteger)err.code;
     return -1;
 }
@@ -148,9 +179,10 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
-    // Guard 1: if user is actively scrubbing, suppress retry — it's the seek storm, not a stall.
+    // Guard 1: if user is actively scrubbing, suppress retry briefly.
+    // Do NOT suppress unbuffered-range seeks for long — they need a buffered reload, not a loop.
     NSTimeInterval sinceSeek = CACurrentMediaTime() - QTLastSeekTime;
-    if (sinceSeek < 0.45 && QTSeekBurstCount >= 2) {
+    if (sinceSeek < 0.45 && QTSeekBurstCount >= 3) {
         QTFixSeekSuppressed++;
         QTCallOriginalHandleError(self,_cmd,error);
         return;
@@ -158,11 +190,16 @@ static void QTHandleError(id self, SEL _cmd, id error) {
     // Guard 2: don't retry if we just retried (avoid circular retry spinner in your screenshot)
     NSTimeInterval sinceRetry = CACurrentMediaTime() - QTLastRetryAt;
     if (QTIsRetrying || (sinceRetry < 1.2 && QTRetryCount > 0)) {
+        // If user is in persistent failure, nudge toward WEB toggle exactly once
+        NSTimeInterval sinceStall = CACurrentMediaTime() - QTFixLastStallAt;
+        if (sinceStall < 45 && QTFixConsecutiveStalls >= 2) QTShowWebPlayerNudge();
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
     QTIsRetrying = YES;
     QTLastRetryAt = CACurrentMediaTime();
+    QTFixConsecutiveStalls++;
+    QTFixLastStallAt = CACurrentMediaTime();
     QTRetryCount++;
 
     SEL pg = NSSelectorFromString(@"parentViewController");
@@ -174,6 +211,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         if (moved > saved + 0.15) {
             QTIsRetrying = NO;
             QTFixStallRecovered++;
+            QTFixConsecutiveStalls = 0;
             return;
         }
         // still stalled -> retry
@@ -193,7 +231,11 @@ static void QTHandleError(id self, SEL _cmd, id error) {
                             double cur = QTPosition(pvc);
                             if (cur <= saved + 0.05) {
                                 QTFixEmergencyRetried++;
+                                // Persistent failure — transient WEB arm + nudge (once)
                                 QTStreamFallbackHandleError(self, err, saved);
+                                if (QTFixConsecutiveStalls >= 3) QTShowWebPlayerNudge();
+                                // Break loop: only one emergency reload per stall burst.
+                                // Further handleError in next 2s will hit the sinceRetry guard above.
                                 if (!QTReloadPlayer(pvc, @"emergency")) QTSendRetryEvent(self, @"emergency");
                                 QTSeek(pvc, saved, @"emergency");
                                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
@@ -201,6 +243,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
                                     QTIsRetrying = NO;
                                 });
                             } else {
+                                QTFixConsecutiveStalls = 0;
                                 QTIsRetrying = NO;
                             }
                             QTEmergencyRunning = NO;

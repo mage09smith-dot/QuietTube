@@ -85,22 +85,42 @@ static NSString *QTEFindViaGIMMe(void) {
     }
     return nil;
 }
-// Last skipped segment for Undo
-static NSDictionary *QTELastSkipped;
-static double QTELastSkipFrom;
+// Undo stack — last 8 skips, repeatable
+static NSMutableArray<NSDictionary*> *QTEUndoStack; // each: @{seg:..., from:..., idx:...}
+static const NSUInteger QTEUndoCap = 8;
 void QTEUndoLastSkip(void) {
-    if (!QTELastSkipped || !QTEController) return;
-    double start = [QTELastSkipped[@"start"] doubleValue];
-    if (!QTELastSkipped[@"start"]) start = [QTELastSkipped[@"segment"][0] doubleValue];
-    // Seek back to just before segment start
-    double target = MAX(0, start - 0.6);
-    id ctrl = QTEController;
-    SEL sel = NSSelectorFromString(@"seekToTime:");
-    if ([ctrl respondsToSelector:sel]) ((void(*)(id,SEL,double))objc_msgSend)(ctrl, sel, target);
-    // Allow re-trigger suppression to expire
-    if (QTESkippedTokens) [QTESkippedTokens removeObject:@([QTECurrentSegments indexOfObject:QTELastSkipped])];
-    QTELastSkipped = nil;
-    QTCount(@"sponsorSkip: undo");
+    @try {
+        if (!QTEUndoStack.count || !QTEController) return;
+        NSDictionary *entry = QTEUndoStack.lastObject;
+        [QTEUndoStack removeLastObject];
+        NSDictionary *seg = entry[@"seg"];
+        if (!seg) return;
+        double start = [seg[@"start"] doubleValue];
+        if (!seg[@"start"]) {
+            NSArray *r = seg[@"segment"];
+            if ([r isKindOfClass:NSArray.class] && r.count>=1) start = [r[0] doubleValue];
+        }
+        double target = MAX(0, start - 0.45);
+        NSNumber *idx = entry[@"idx"];
+        if (idx && QTESkippedTokens) [QTESkippedTokens removeObject:idx];
+        id ctrl = QTEController;
+        SEL sel = NSSelectorFromString(@"seekToTime:");
+        @try {
+            if ([ctrl respondsToSelector:sel]) ((void(*)(id,SEL,double))objc_msgSend)(ctrl, sel, target);
+            else {
+                SEL alt = NSSelectorFromString(@"scrubToTime:");
+                if ([ctrl respondsToSelector:alt]) ((void(*)(id,SEL,double))objc_msgSend)(ctrl, alt, target);
+            }
+        } @catch (__unused NSException *e) {}
+        QTCount(@"sponsorSkip: undo");
+    } @catch (__unused NSException *e) {}
+}
+static void QTEPushUndo(NSDictionary *seg, NSUInteger idx, double from) {
+    @try {
+        if (!QTEUndoStack) QTEUndoStack = [NSMutableArray array];
+        if (QTEUndoStack.count >= QTEUndoCap) [QTEUndoStack removeObjectAtIndex:0];
+        [QTEUndoStack addObject:@{@"seg": seg, @"idx": @(idx), @"from": @(from)}];
+    } @catch (__unused NSException *e) {}
 }
 
 static void QTESeekTo(id controller, double t) {
@@ -336,9 +356,8 @@ static void QTEEvaluate(id controller, double time) {
         if (time >= start && time < end - 0.35 && ![QTESkippedTokens containsObject:token]) {
             [QTESkippedTokens addObject:token];
             didSkip=YES;
-            double target = end + 0.12;
-            QTELastSkipped = seg;
-            QTELastSkipFrom = time;
+            double target = end + 0.10;
+            QTEPushUndo(seg, idx, time);
             QTESeekTo(controller, target);
             QTESkippedCount++;
             QTCount(@"sponsorSkip: segment skipped");
@@ -372,13 +391,16 @@ static void QTEEvaluate(id controller, double time) {
                 undo.backgroundColor=[UIColor colorWithWhite:1 alpha:0.14]; undo.layer.cornerRadius=8;
                 undo.contentEdgeInsets=UIEdgeInsetsMake(6, 12, 6, 12);
                 [undo addTarget:nil action:@selector(QTEUndoTapped) forControlEvents:UIControlEventTouchUpInside];
-                // Use block-based target via associated object
-                objc_setAssociatedObject(undo, "banner", banner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+                // Undo via UIAction — dismiss banner then seek.  Keep button alive after dismiss.
+                __weak UIView *weakBanner = banner;
                 [undo addAction:[UIAction actionWithTitle:@"" image:nil identifier:nil handler:^(__kindof UIAction *a){
-                    UIView *b = objc_getAssociatedObject(a.sender, "banner");
-                    [UIView animateWithDuration:0.18 animations:^{ b.alpha=0; } completion:^(__unused BOOL f){ [b removeFromSuperview]; }];
-                    QTEUndoLastSkip();
+                    UIView *b = weakBanner ?: objc_getAssociatedObject(a.sender, "banner");
+                    if (b.superview) [UIView animateWithDuration:0.16 animations:^{ b.alpha=0; } completion:^(__unused BOOL f){ [b removeFromSuperview]; }];
+                    else [b removeFromSuperview];
+                    // Defer undo one runloop so banner teardown does not collide with seek
+                    dispatch_async(dispatch_get_main_queue(), ^{ QTEUndoLastSkip(); });
                 }] forControlEvents:UIControlEventTouchUpInside];
+                objc_setAssociatedObject(undo, "banner", banner, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
                 [stack addArrangedSubview:lab];
                 [stack addArrangedSubview:undo];
                 [banner addSubview:stack];
@@ -506,6 +528,7 @@ void QTSponsorEngineVideoChanged(NSString *vid) {
     QTECurrentVideoID=[vid copy];
     QTECurrentSegments=@[]; QTERawSegments=@[];
     QTESkippedTokens=[NSMutableSet set];
+    [QTEUndoStack removeAllObjects];
     if (!QTEEnabled()) {
         if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(vid)?:@"none", @"result":@"disabled", @"cached":@(0)});
         for (UIView *b in QTEBars) [b setNeedsLayout];

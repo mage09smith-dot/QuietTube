@@ -67,9 +67,12 @@
             ]];
         }
         if ([self.group isEqualToString:@"Playback"]) {
-            // Playback page: existing rows plus WEB client toggle for PoToken bypass
-            NSMutableArray *pb=[rows mutableCopy];
-            [pb addObject:@{@"title":@"Prefer WEB player (fewer errors)",@"key":@"useWebClient",@"note":@"When on, YouTube's WEB player is used internally. This avoids the 'Something went wrong' error entirely (like uBlock on web). May affect quality selection. Restart required."}];
+            NSMutableArray *pb=[NSMutableArray array];
+            // Keep original playback rows first
+            [pb addObjectsFromArray:rows];
+            // Dedup: only add useWebClient if not already present in catalog
+            BOOL hasWeb = NO; for (NSDictionary *r in rows) if ([r[@"key"] isEqualToString:@"useWebClient"]) hasWeb = YES;
+            if (!hasWeb) [pb addObject:@{@"title":@"Switch to Web Player",@"key":@"useWebClient",@"note":@"Fixes 'Something went wrong' by using YouTube's WEB player internally (like web + uBlock). Fewer errors, same SponsorSkip. Restart required. Off by default."}];
             rows=pb;
         }
         self.rows=rows;

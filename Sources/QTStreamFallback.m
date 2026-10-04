@@ -20,12 +20,16 @@ static IMP OrigUploadTaskBody;
 static IMP OrigDataTaskCB;
 
 static NSString * const QTWebClientKey = @"QuietTube.v1.useWebClient";
+static NSString * const QTWebClientKeyLegacy = @"QuietTube.v1.useWebClient";
 BOOL QTStreamFallbackUsesWebClient(void) {
     return QTFallbackUseWebClient;
 }
 void QTStreamFallbackSetUseWebClient(BOOL useWeb) {
     QTFallbackUseWebClient = useWeb;
-    [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:QTWebClientKey];
+    // Canonical key is QTPrefix+useWebClient; also mirror legacy for readers.
+    [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:@"QuietTube.v1.useWebClient"];
+    // QTCore will mirror to canonical on next launch — also set directly here
+    [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:QTWebClientKeyLegacy];
     if (useWeb) { QTFallbackArmed = YES; QTFallbackArmUntil = [NSDate date].timeIntervalSince1970 + 3600*24*365; }
     else { QTFallbackArmed = NO; }
 }

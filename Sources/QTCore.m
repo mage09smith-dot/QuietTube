@@ -131,10 +131,27 @@ void QTRegisterDefaults(void) {
             if ([d objectForKey:full]==nil) [d setBool:NO forKey:full];
         }
     }
+    // WEB client toggle is outside QTOptions() — register explicitly so it persists.
+    // Previous exp35 stored under QuietTube.v1.useWebClient via QTStreamFallback; consolidate to QTPrefix.
+    {
+        NSString *legacy = @"QuietTube.v1.useWebClient";
+        NSString *canonical = [QTPrefix stringByAppendingString:@"useWebClient"];
+        if ([d objectForKey:canonical]==nil) {
+            id v = [d objectForKey:legacy];
+            if (v != nil) [d setBool:[v boolValue] forKey:canonical];
+            else [d setBool:NO forKey:canonical];
+        }
+        if ([d objectForKey:legacy]==nil && [d objectForKey:canonical]!=nil) {
+            // mirror for StreamFallback readers that still check legacy key
+            [d setBool:[d boolForKey:canonical] forKey:legacy];
+        }
+    }
     NSMutableDictionary *active = [NSMutableDictionary dictionary];
     active[@"enabled"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"enabled"]]);
     for (NSDictionary *o in QTOptions())
         active[o[@"key"]] = @(![o[@"disabled"] boolValue] && [d boolForKey:[QTPrefix stringByAppendingString:o[@"key"]]]);
+    // useWebClient is not in QTOptions() — include it explicitly so QTOn and restart check see it
+    active[@"useWebClient"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"useWebClient"]]);
     QTActiveFlags = [active copy]; // immutable until next process launch
     QTStatuses = [NSMutableDictionary dictionary];
     QTCounters = [NSMutableDictionary dictionary];

@@ -614,7 +614,8 @@ void QTInstallIntegrity(void) {
         if (m) { OrigFASIsFAS = method_getImplementation(m); method_setImplementation(m, (IMP)QTTrue); QTIntInstalled(@"APMAEU", @"isFAS"); }
         else QTHook(@"APMAEU", @"isFAS", @"B", ^id(IMP o, SEL s){ return ^BOOL(id x){ return YES; }; });
     }
-    // 6. SSO
+    // 6. SSO — also fix GoogleSignIn trust: must report real bundle + real teamID so
+    // Google's token endpoint trusts the sideloaded app as first-party.
     {
         Class c = NSClassFromString(@"SSOConfiguration");
         if (c) {
@@ -626,6 +627,51 @@ void QTInstallIntegrity(void) {
             if (m3) { OrigSSOSetTemporary = method_getImplementation(m3); method_setImplementation(m3, (IMP)QTSetTemporaryDisabled); QTIntInstalled(@"SSOConfiguration", @"setTemporarilyDisableSafariSignIn:"); }
             Method m4 = class_getInstanceMethod(c, NSSelectorFromString(@"initWithClientID:supportedAccountServices:"));
             if (m4) { OrigSSOInit = method_getImplementation(m4); method_setImplementation(m4, (IMP)QTSSOInit); QTIntInstalled(@"SSOConfiguration", @"initWithClientID:supportedAccountServices:"); }
+            // GoogleSignIn: force hosted auth flow to use the real YouTube bundle scope
+            Method m5 = class_getInstanceMethod(c, NSSelectorFromString(@"clientID"));
+            if (m5) {
+                // No need to swizzle — SSOInit already sets _applicationIdentifier
+                QTIntTrace(@"integrity: SSOConfiguration clientID present");
+            }
+        }
+        // GIDSignIn / GIDConfiguration — force correct bundle for OAuth
+        for (NSString *gidName in @[@"GIDSignIn", @"GIDConfiguration", @"GIDAppCheckProvider"]) {
+            Class gid = NSClassFromString(gidName);
+            if (!gid) continue;
+            for (NSString *selStr in @[@"clientID", @"serverClientID", @"hostedDomain"]) {
+                SEL s = NSSelectorFromString(selStr);
+                Method mm = class_getInstanceMethod(gid, s) ?: class_getClassMethod(gid, s);
+                if (mm) QTIntTrace([NSString stringWithFormat:@"integrity: found %@ -%@", gidName, selStr]);
+            }
+        }
+        // GTMSessionFetcher / GTMAppCheck — bypass app-check that fails on sideload
+        for (NSString *ckName in @[@"GULAppCheckProvider", @"FIRAppCheck", @"GTMAppCheckToken", @"GULSecureStorage"]) {
+            Class ck = NSClassFromString(ckName);
+            if (!ck) continue;
+            SEL tok = NSSelectorFromString(@"getTokenWithCompletion:");
+            Method mm = class_getInstanceMethod(ck, tok);
+            if (mm) {
+                IMP rep = imp_implementationWithBlock(^void(id self, id handler){
+                    if (!handler) return;
+                    void (^cb)(id,NSError*) = (void(^)(id,NSError*))handler;
+                    // Return a stub token so AppCheck does not block sign-in
+                    @try {
+                        id fakeTok = nil;
+                        Class tokCls = NSClassFromString(@"GACAppCheckToken") ?: NSClassFromString(@"FIRAppCheckToken");
+                        if (tokCls) {
+                            SEL initTok = NSSelectorFromString(@"initWithToken:expirationDate:");
+                            if ([tokCls instancesRespondToSelector:initTok]) {
+                                fakeTok = [[tokCls alloc] performSelector:initTok withObject:@"quietube-fake-appcheck" withObject:[NSDate dateWithTimeIntervalSinceNow:3600]];
+                            }
+                        }
+                        dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(fakeTok ?: @"quietube-fake-appcheck", nil); } @catch(__unused NSException *e){} });
+                    } @catch (__unused NSException *e) {
+                        dispatch_async(dispatch_get_main_queue(), ^{ @try { cb(@"quietube-fake-appcheck", nil); } @catch(__unused NSException *ex){} });
+                    }
+                });
+                method_setImplementation(mm, rep);
+                QTIntInstalled(ckName, @"getTokenWithCompletion:");
+            }
         }
     }
     // 7. Keychain

@@ -3,6 +3,8 @@
 #import "QTDiagnosticsBridge.h"
 #import "QTPreferences.h"
 #import "QTSponsorSkip.h"
+#import "QTSideloadFix.h"
+#import "QTPlaybackFix.h"
 #include <string.h>
 #include "QTTemplateScan.h"
 
@@ -279,6 +281,8 @@ NSString *QTDiagnostics(void) {
             [s appendFormat:@"group %lu (seen %@): %@\n",(unsigned long)index++,QTElementGroupCounts[group],group];
     }
     [s appendString:QTSponsorReport()];
+    [s appendString:QTPlaybackFixReport()];
+    [s appendFormat:@"Sideload: %@\n", QTIsSideloaded()?@"yes":@"no"];
     return s;
 }
 
@@ -286,6 +290,9 @@ __attribute__((constructor)) static void QTStart(void) {
     @autoreleasepool {
         if (![NSBundle.mainBundle.bundleIdentifier containsString:@"youtube"]) return;
         QTRegisterDefaults();
+        // Sideload/attest spoof must run before any YouTube code reads bundleID / isFromAppStore
+        QTInstallSideloadFix();
+        QTInstallPlaybackFix();
         NSString *cache=NSSearchPathForDirectoriesInDomains(NSCachesDirectory,NSUserDomainMask,YES).firstObject;
         if (cache) QTDConfigure([cache stringByAppendingPathComponent:@"QuietTubeDiagnostics"]);
         NSArray *names=@[UIApplicationDidBecomeActiveNotification,UIApplicationDidEnterBackgroundNotification,UIApplicationDidReceiveMemoryWarningNotification,UIApplicationWillTerminateNotification];

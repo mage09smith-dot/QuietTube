@@ -211,18 +211,7 @@ void QTInstallFeatures(void) {
     }
     QTNoArgAction(@"YTWatchFlowController",@"playAutoplay",@"autoplay");
     QTNoArgAction(@"YTQueueController",@"triggerPendingAutoplay",@"autoplay");
-    // Error observation only; the native handler always executes, with no retries.
-    QTHook(@"YTMainAppVideoPlayerOverlayViewController",@"handleError:",@"v@",^id(IMP old,SEL sel) {
-        return ^(id object,NSError *error) {
-            QTDError(error);
-            if ([error isKindOfClass:NSError.class]) {
-// BEGIN 0.13 AD PROFILE
-                QTAdPlaybackError(error);
-// END 0.13 AD PROFILE
-                NSString *kind = [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] ? @"YouTube" : @"other";
-                QTCount([NSString stringWithFormat:@"playback error %@ code %ld",kind,(long)error.code]);
-            }
-            ((void (*)(id,SEL,id))old)(object,sel,error);
-        };
-    });
+    // handleError is owned by QTPlaybackFix (installed in QTStart before
+    // QTInstallFeatures).  Do not double-hook — PlaybackFix already observes
+    // errors, trips the ad-profile latch, and retries stall codes.
 }

@@ -145,8 +145,8 @@ void QTSponsorFetch(NSString *vid, void (^completion)(NSArray<NSDictionary*> *se
     if (!cats.count){ if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[]); }); return; }
     NSString *cacheKey=[NSString stringWithFormat:@"%@|%@", vid, [cats componentsJoinedByString:@","]];
     NSArray *cached=[QTSponsorClientCacheGet() objectForKey:cacheKey];
-    NSArray *mem=QTSponsorCacheLoad(vid);
     if (cached){ if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(cached); }); return; }
+    NSArray *mem=QTSponsorCacheLoad(vid);
     if (mem){
         NSMutableArray *filtered=[NSMutableArray array];
         for (NSDictionary *s in mem) if ([cats containsObject:s[@"category"]]) [filtered addObject:s];
@@ -154,11 +154,12 @@ void QTSponsorFetch(NSString *vid, void (^completion)(NSArray<NSDictionary*> *se
         NSMutableArray *norm=[NSMutableArray array];
         for (NSDictionary *s in sorted){
             if (s[@"segment"] && s[@"start"]) [norm addObject:s];
-            else if (s[@"start"] && s[@"end"]) [norm addObject:@{@"segment": @[s[@"start"], s[@"end"]], @"category": s[@"category"]?:@"sponsor"}];
+            else if (s[@"start"] && s[@"end"]) [norm addObject:@{@"segment": @[s[@"start"], s[@"end"]], @"category": s[@"category"]?:@"sponsor", @"start": s[@"start"], @"end": s[@"end"]}];
             else [norm addObject:s];
         }
         [QTSponsorClientCacheGet() setObject:norm forKey:cacheKey];
         if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(norm); });
+        // still refresh from network in background — mem may be stale
     }
     NSURLComponents *comp=[NSURLComponents componentsWithString:@"https://sponsor.ajay.app/api/skipSegments"];
     NSData *catData=[NSJSONSerialization dataWithJSONObject:cats options:0 error:nil];
@@ -310,34 +311,87 @@ static void QTSeekToTime(id controller, double t){
 static void QTEvaluateSponsorTime(id controller, double time){
     if (!QTSponsorSkipEnabled()) return;
     NSArray<NSDictionary*> *segments=objc_getAssociatedObject(controller, QTSponsorSegmentsAssoc);
-    if (!segments) segments=QTCurrentSegments;
+    if (!segments.count) segments=QTCurrentSegments;
+    if (!segments.count) return;
     NSMutableSet<NSNumber*> *skipped=objc_getAssociatedObject(controller, QTSponsorSkippedAssoc);
     if (!skipped){ skipped=[NSMutableSet set]; objc_setAssociatedObject(controller, QTSponsorSkippedAssoc, skipped, OBJC_ASSOCIATION_RETAIN_NONATOMIC); }
+    // Use a short dispatch queue delay to avoid re-entrant seek loops
+    __block BOOL didSkip = NO;
     [segments enumerateObjectsUsingBlock:^(NSDictionary *seg, NSUInteger idx, BOOL *stop){
+        if (didSkip) { *stop=YES; return; }
         double start=[seg[@"start"] doubleValue];
         if (!seg[@"start"]) start=[seg[@"segment"][0] doubleValue];
         double end=[seg[@"end"] doubleValue];
         if (!seg[@"end"]) end=[seg[@"segment"][1] doubleValue];
+        if (!isfinite(start) || !isfinite(end) || end <= start) return;
         NSString *cat=seg[@"category"]?:@"sponsor";
         NSInteger behavior=QTSponsorCategoryBehavior(cat);
         if (behavior==2 || behavior==3) return;
         NSNumber *token=@(idx);
         if (time < start -1.0) [skipped removeObject:token];
-        if (time >= start && time < end -0.25 && ![skipped containsObject:token]){
+        if (time >= start && time < end -0.4 && ![skipped containsObject:token]){
             [skipped addObject:token];
-            QTSeekToTime(controller, end);
+            didSkip = YES;
+            // Seek slightly past segment end to avoid re-trigger on keyframe
+            double target = end + 0.15;
+            QTSeekToTime(controller, target);
             QTSponsorSkippedTotal++; QTCount(@"sponsorSkip: segment skipped");
             if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTCurrentVideoID?QTSponsorPrefixForVideoID(QTCurrentVideoID):@"none", @"result": @"skipped", @"category": cat, @"start": @((long long)(start*1000)), @"end": @((long long)(end*1000)), @"skipped": @(QTSponsorSkippedTotal)});
+            // show Undo HUD
+            dispatch_async(dispatch_get_main_queue(), ^{
+                // minimal HUD — reuse existing banner if available
+                UIViewController *top = nil;
+                for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
+                    if (![sc isKindOfClass:UIWindowScene.class]) continue;
+                    UIWindowScene *ws = (UIWindowScene*)sc;
+                    if (ws.activationState != UISceneActivationStateForegroundActive) continue;
+                    for (UIWindow *w in ws.windows) if (w.isKeyWindow) { top = w.rootViewController; break; }
+                    if (top) break;
+                }
+                while (top.presentedViewController) top = top.presentedViewController;
+                if (!top.view.window) return;
+                UIView *banner = [[UIView alloc] init];
+                banner.backgroundColor = [UIColor colorWithWhite:0.08 alpha:0.94];
+                banner.layer.cornerRadius = 12; banner.translatesAutoresizingMaskIntoConstraints = NO;
+                UILabel *lab = [UILabel new];
+                lab.text = [NSString stringWithFormat:@"Skipped %@ (%.0fs)", cat, end-start];
+                lab.textColor = UIColor.whiteColor; lab.font = [UIFont systemFontOfSize:13 weight:UIFontWeightSemibold];
+                lab.translatesAutoresizingMaskIntoConstraints = NO;
+                [banner addSubview:lab];
+                [NSLayoutConstraint activateConstraints:@[
+                    [lab.topAnchor constraintEqualToAnchor:banner.topAnchor constant:10],
+                    [lab.leadingAnchor constraintEqualToAnchor:banner.leadingAnchor constant:14],
+                    [lab.trailingAnchor constraintEqualToAnchor:banner.trailingAnchor constant:-14],
+                    [lab.bottomAnchor constraintEqualToAnchor:banner.bottomAnchor constant:-10],
+                ]];
+                banner.alpha = 0; banner.transform = CGAffineTransformMakeScale(0.96, 0.96);
+                [top.view addSubview:banner];
+                UILayoutGuide *safe = top.view.safeAreaLayoutGuide;
+                [NSLayoutConstraint activateConstraints:@[
+                    [banner.centerXAnchor constraintEqualToAnchor:safe.centerXAnchor],
+                    [banner.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor constant:-54],
+                ]];
+                [UIView animateWithDuration:0.22 animations:^{ banner.alpha=1; banner.transform=CGAffineTransformIdentity; }];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(3.0*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [UIView animateWithDuration:0.22 animations:^{ banner.alpha=0; banner.transform=CGAffineTransformMakeScale(0.96,0.96);} completion:^(__unused BOOL f){ [banner removeFromSuperview]; }];
+                });
+            });
             *stop=YES;
         }
     }];
 }
 static void QTRenderSponsorMarkers(UIView *receiver, UIView *target, BOOL fullHeight){
-    if (!QTSponsorSkipEnabled()) return;
+    if (!QTSponsorSkipEnabled() && !QTDEnabled()) return;
     id controller=QTCurrentSponsorController;
     NSArray *segments=objc_getAssociatedObject(controller, QTSponsorSegmentsAssoc);
-    if (!segments) segments=QTSponsorFilteredSegments(QTCurrentSegments);
-    else segments=QTSponsorFilteredSegments(segments);
+    if (!segments.count) segments=QTCurrentSegments;
+    segments=QTSponsorFilteredSegments(segments);
+    if (!segments.count && !QTDEnabled()) {
+        // hide any existing container
+        CAShapeLayer *old = objc_getAssociatedObject(receiver, QTSponsorMarkerAssoc);
+        old.hidden = YES;
+        return;
+    }
     CAShapeLayer *container=objc_getAssociatedObject(receiver, QTSponsorMarkerAssoc);
     if (!container){
         container=[CAShapeLayer layer];

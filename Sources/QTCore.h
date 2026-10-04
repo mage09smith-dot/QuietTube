@@ -1,6 +1,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 #import <objc/message.h>
+#import "QTSideloadFix.h"
+#import "QTPlaybackFix.h"
 
 BOOL QTOn(NSString *key);
 void QTSet(NSString *key, BOOL value);

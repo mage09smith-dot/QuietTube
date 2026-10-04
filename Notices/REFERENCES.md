@@ -12,7 +12,11 @@
 
 The player constructor and scoped feed-insertion boundaries were also inspected in the exact supported native binary. Tests retain the active API metadata, not the app binary, raw payloads or disassembly. Inspection does not grant redistribution rights to that app.
 
-YTPlaybackFix was reviewed for comparison. Its client-rewriting, retry and network implementation is not included. No YouMod GPL implementation is included. No SponsorBlock GPL code is bundled — only network calls to its API. A project appearing in this list does not mean its features or licensing permissions transfer here.
+**[YTPlaybackFix](https://github.com/Mark02-2012/YTPlaybackFix)** — MIT, copyright 2026 Mark02. Its stall-detection retry (time tracking + `MLPlayerReloadContext` + `YTPlayerTapToRetryResponderEvent` + emergency re-check after 3s) was adapted for QuietTube's `QTPlaybackFix` to address the sideloaded PO-token/integrity "Something went wrong" error. Its VISION/HLS client rewriting and `n`-param solver are not included. Original license retained where applicable.
+
+**[YTKACE — SideloadCompatibility](https://github.com/itzzace/ytkace/blob/main/Tweak/Features/Compatibility/SideloadCompatibility.mm)** — MIT, copyright 2026 YTKACE contributors. Its bundle-identifier / `GULAppEnvironmentUtil.isFromAppStore` / `SSOConfiguration` / keychain `accessGroup` / `containerURLForSecurityApplicationGroupIdentifier` spoofs were adapted for QuietTube's `QTSideloadFix` to address App Attest failures on sideloaded IPAs. License: `YTKACE-MIT.txt`.
+
+No YouMod GPL implementation is included. No SponsorBlock GPL code is bundled — only network calls to its API. A project appearing in this list does not mean its features or licensing permissions transfer here.
 
 ## Presentation
 

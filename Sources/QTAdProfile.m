@@ -44,6 +44,21 @@ BOOL QTAdProfileActive(void) { return QTOn(@"enabled") && QTAdActive(); }
 // descriptions, signed URLs, userInfo dump, account IDs or response payloads.
 void QTAdPlaybackError(NSError *error) {
     if (!QTOn(@"adTest")) return;
+    // Bulletproof fix: code 14/0 ("Something went wrong") are integrity/PoToken
+    // stalls — NOT caused by the ad profile and must NOT trip the latch.
+    // Only other errors are real ad-profile side effects.
+    BOOL isIntegrityStall = [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && (error.code == 14 || error.code == 0);
+    if (isIntegrityStall) {
+        // Just record, don't pause. QTIntegrity + QTPlaybackFix handle this.
+        @try {
+            QTAdPrepare();
+            @synchronized(QTAdEvents) {
+                if (QTAdEvents.count>=80) { [QTAdEvents removeObjectAtIndex:0]; QTAdDiscarded++; }
+                [QTAdEvents addObject:[NSString stringWithFormat:@"+%.1fs integrity stall code %ld (no pause)", NSProcessInfo.processInfo.systemUptime-QTAdEpoch, (long)error.code]];
+            }
+        } @catch(__unused NSException *e) {}
+        return;
+    }
     if (!atomic_exchange(&QTAdTripped,true)) {
         QTAdRecord(@"SESSION SAFETY PAUSE: native behavior for future calls; saved preferences unchanged; restart to retry");
     }

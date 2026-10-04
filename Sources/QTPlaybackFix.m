@@ -1,6 +1,7 @@
 #import "QTPlaybackFix.h"
 #import "QTCore.h"
 #import "QTDiagnosticLog.h"
+#import "QTStreamFallback.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 
@@ -105,6 +106,13 @@ static void QTScheduleCaptionRestore(id player) {
     }
 }
 
+static NSInteger QTErrorCodeForRetry(NSError *err) {
+    if (!err || ![err.domain isEqualToString:QTPlaybackErrorDomain]) return -1;
+    if (err.code==14 || err.code==0) return (NSInteger)err.code;
+    // also retry code 5 (network) on sideload where PoToken caused stream failure
+    if (err.code==5) return (NSInteger)err.code;
+    return -1;
+}
 static void QTHandleError(id self, SEL _cmd, id error) {
     // Always observe — mirrors QTFeatures handleError semantics.
     QTDError(error);
@@ -114,13 +122,12 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         QTCount([NSString stringWithFormat:@"playback error %@ code %ld",kind,(long)((NSError*)error).code]);
     }
     NSError *err = [error isKindOfClass:NSError.class] ? error : nil;
-
-    // Only intercept sideloaded-relevant stall codes.  Other codes just
-    // forwarded above and now pass through to native handler.
-    if (!err || ![err.domain isEqualToString:QTPlaybackErrorDomain] || (err.code != 14 && err.code != 0)) {
+    NSInteger retryCode = QTErrorCodeForRetry(err);
+    if (retryCode==-1) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
+    // dedup: don't retry same error repeatedly within window
     if (QTIsRetrying) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
@@ -156,6 +163,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
                             double cur = QTPosition(pvc);
                             if (cur <= saved + 0.05) {
                                 QTFixEmergencyRetried++;
+                                QTStreamFallbackHandleError(self, err, saved);
                                 if (!QTReloadPlayer(pvc, @"emergency")) QTSendRetryEvent(self, @"emergency");
                                 QTSeek(pvc, saved, @"emergency");
                                 dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.20*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{

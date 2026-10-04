@@ -112,6 +112,7 @@ static NSString *QTSponsorCachePath(NSString *vid){
     return [dir stringByAppendingPathComponent:[QTSponsorHashForVideoID(vid) stringByAppendingPathExtension:@"json"]];
 }
 void QTSponsorCacheStore(NSString *vid, NSArray<NSDictionary*> *segs){
+    // Keep for external callers; engine handles its own cache.
     if (!vid || !segs) return;
     if (!QTSponsorMemoryCache) QTSponsorMemoryCache=[NSMutableDictionary dictionary];
     QTSponsorMemoryCache[vid]=segs;
@@ -139,6 +140,7 @@ NSArray<NSDictionary*> *QTSponsorCacheLoad(NSString *vid){
 }
 void QTSponsorCacheClear(void){ [QTSponsorMemoryCache removeAllObjects]; }
 
+// Shim fetch — delegates to engine. Kept for external callers/tests.
 void QTSponsorFetch(NSString *vid, void (^completion)(NSArray<NSDictionary*> *segs)){
     if (!vid.length){ if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[]); }); return; }
     NSArray<NSString*> *cats=QTSponsorEnabledCategories();
@@ -468,153 +470,33 @@ static void QTRenderSponsorMarkers(UIView *receiver, UIView *target, BOOL fullHe
 }
 
 void QTSponsorNotifyVideoIDChanged(NSString *vid){
-    if (!vid.length || [vid isEqualToString:QTCurrentVideoID]) return;
-    QTCurrentVideoID=[vid copy];
-    QTCurrentSegments=@[];
-    if (!QTSponsorSkipEnabled()){
+    // Pure delegate — engine owns all state. Keep legacy globals in sync for diagnostics.
+    extern void QTSponsorEngineVideoChanged(NSString *vid);
+    if (!vid.length) return;
+    QTCurrentVideoID = [vid copy];
+    if ([vid length]==11) QTSponsorEngineVideoChanged(vid);
+    // keep legacy cache path warm for old readers
+    if (!QTSponsorSkipEnabled()) {
         if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(vid)?:@"none", @"result": @"disabled", @"cached": @(0)});
         return;
     }
-    NSArray *cached=QTSponsorCacheLoad(vid);
-    if (cached){
-        QTCurrentSegments=cached;
-        // also set per-controller
-        if (QTCurrentSponsorController){
-            objc_setAssociatedObject(QTCurrentSponsorController, QTSponsorSegmentsAssoc, cached, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-            objc_setAssociatedObject(QTCurrentSponsorController, QTSponsorSkippedAssoc, [NSMutableSet set], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(vid)?:@"none", @"result": @"hit", @"segments": @(cached.count), @"filtered": @(QTSponsorFilteredSegments(cached).count), @"cached": @(1)});
-        for (UIView *bar in QTSponsorBars) [bar setNeedsLayout];
-    } else {
-        if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(vid)?:@"none", @"result": @"miss", @"cached": @(0)});
-    }
-    QTSponsorFetch(vid, ^(NSArray<NSDictionary*> *segs){
-        QTCurrentSegments=segs?:@[];
-        if (QTCurrentSponsorController){
-            objc_setAssociatedObject(QTCurrentSponsorController, QTSponsorSegmentsAssoc, QTCurrentSegments, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        }
-        for (UIView *bar in QTSponsorBars) [bar setNeedsLayout];
-    });
 }
 
 void QTSponsorInstall(void){
+    // Pure delegate — QTSponsorEngine is the single source of truth.
+    // This shim exists only for backwards-compat callers and test harness.
+    extern void QTSponsorEngineInstall(void);
+    QTSponsorEngineInstall();
     if (!QTSponsorBars) QTSponsorBars=[NSHashTable weakObjectsHashTable];
-    QTCount(@"sponsorSkip: installed");
+    QTCount(@"sponsorSkip: installed (shim)");
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
     QTSponsorTimeUpdatesEnabled=QTSponsorSkipEnabled();
-    // hook installer — signature-agnostic, scans all classes for selector to handle 21.38.2 renames
-    void (^tryHook)(NSString*,NSString*,id(^)(IMP,SEL)) = ^(NSString *clsName, NSString *selName, id (^factory)(IMP,SEL)){
-        Class cls=NSClassFromString(clsName);
-        SEL sel=NSSelectorFromString(selName);
-        Method m=cls?class_getInstanceMethod(cls, sel):NULL;
-        // if not found, scan all classes for that selector
-        if (!m){
-            unsigned int count=0;
-            Class *list=objc_copyClassList(&count);
-            for (unsigned int i=0;i<count;i++){
-                Method cand=class_getInstanceMethod(list[i], sel);
-                if (cand){
-                    // also need class name contains YT or Player to avoid random
-                    NSString *name=NSStringFromClass(list[i]);
-                    if ([name containsString:@"YT"] || [name containsString:@"Player"]){
-                        cls=list[i]; m=cand; break;
-                    }
-                }
-            }
-            free(list);
-        }
-        if (!m){
-            if (QTDEnabled()) QTDEvent(QTDEHook, @{@"class":clsName, @"selector":selName, @"installed":@(0), @"description":@"no match"});
-            return;
-        }
-        const char *enc=method_getTypeEncoding(m);
-        IMP old=method_getImplementation(m);
-        IMP rep=imp_implementationWithBlock(factory(old, sel));
-        if (!rep) return;
-        if (!class_addMethod(cls, sel, rep, enc)) method_setImplementation(m, rep);
-        QTDEvent(QTDEHook, @{@"class":NSStringFromClass(cls), @"selector":selName, @"installed":@(1)});
-    };
-    void (^install)(void)=^{
-        tryHook(@"YTPlayerViewController", @"playbackController:didActivateVideo:withPlaybackData:", ^id(IMP old, SEL sel){
-            return ^(id vc, id a1, id a2, id a3){
-                ((void (*)(id,SEL,id,id,id))old)(vc, sel, a1, a2, a3);
-                QTCurrentSponsorController=vc;
-                YTKACELastPlayerController=vc;
-                NSString *vid=QTVideoIDFromObject(a2)?:QTVideoIDFromObject(a3)?:QTVideoIDFromObject(vc)?:QTVideoIDFromObject(a1)?:QTFindVideoIDViaGIMMe()?:QTFindVideoIDByScanningWindows();
-                if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": vid?QTSponsorPrefixForVideoID(vid):@"none", @"result": vid.length==11?@"hook_vid":@"hook_novid", @"cached":@(0), @"description":[NSString stringWithFormat:@"a1=%@ a2=%@ a3=%@ vc=%@", NSStringFromClass([a1 class]), NSStringFromClass([a2 class]), NSStringFromClass([a3 class]), NSStringFromClass([vc class])]});
-                if (vid.length==11){ 
-                    objc_setAssociatedObject(vc, QTSponsorVideoAssoc, vid, OBJC_ASSOCIATION_COPY_NONATOMIC);
-                    objc_setAssociatedObject(vc, QTSponsorSegmentsAssoc, @[], OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                    QTSponsorNotifyVideoIDChanged(vid);
-                    // also fetch per-controller directly like ytkace
-                    __weak id weakVC=vc;
-                    NSString *copyVid=vid;
-                    QTSponsorFetch(copyVid, ^(NSArray *segs){
-                        id strong=weakVC;
-                        NSString *cur=objc_getAssociatedObject(strong, QTSponsorVideoAssoc);
-                        if (strong && [cur isEqualToString:copyVid]){
-                            objc_setAssociatedObject(strong, QTSponsorSegmentsAssoc, segs, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-                            for (UIView *bar in QTSponsorBars) [bar setNeedsLayout];
-                        }
-                    });
-                }
-            };
-        });
-        tryHook(@"YTPlayerViewController", @"singleVideo:currentVideoTimeDidChange:", ^id(IMP old, SEL sel){
-            return ^(id vc, id vid, double t){
-                ((void (*)(id,SEL,id,double))old)(vc, sel, vid, t);
-                double cur=QTDoubleMessage(vc, @[@"currentVideoMediaTime"]);
-                double res=cur>0?cur:t;
-                if (QTSponsorTimeUpdatesEnabled) QTEvaluateSponsorTime(vc, res);
-            };
-        });
-        tryHook(@"YTPlayerViewController", @"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:", ^id(IMP old, SEL sel){
-            return ^(id vc, id vid, double t){
-                ((void (*)(id,SEL,id,double))old)(vc, sel, vid, t);
-                double cur=QTDoubleMessage(vc, @[@"currentVideoMediaTime"]);
-                double res=cur>0?cur:t;
-                if (QTSponsorTimeUpdatesEnabled) QTEvaluateSponsorTime(vc, res);
-                if (QTDEnabled() && res>0){
-                    static NSTimeInterval last=0; if (CACurrentMediaTime()-last>5){ last=CACurrentMediaTime(); QTDEvent(QTDESponsorSkip, @{@"prefix": QTCurrentVideoID?QTSponsorPrefixForVideoID(QTCurrentVideoID):@"none", @"result": (objc_getAssociatedObject(vc,QTSponsorSegmentsAssoc)?@"tick":@"tick_noseg"), @"category":@"time", @"start":@((long long)(res*1000)), @"skipped":@(QTSponsorSkippedTotal)}); }
-                }
-            };
-        });
-        tryHook(@"YTSingleVideo", @"setCurrentTime:", ^id(IMP old, SEL sel){
-            return ^(id o, double t){ ((void (*)(id,SEL,double))old)(o,sel,t); if (t>0 && QTCurrentSponsorController) QTEvaluateSponsorTime(QTCurrentSponsorController, t); };
-        });
-        tryHook(@"YTInlinePlayerBarContainerView", @"layoutSubviews", ^id(IMP old, SEL sel){
-            return ^(id v){ ((void (*)(id,SEL))old)(v,sel); [QTSponsorBars addObject:v]; UIView *t=v; for (UIView *sub in ((UIView*)v).subviews) if ([NSStringFromClass(sub.class) isEqualToString:@"YTModularPlayerBarView"]) { t=sub; break; } QTRenderSponsorMarkers(v,t,NO); };
-        });
-        tryHook(@"YTWatchFloatingMiniplayerProgressBarView", @"layoutSubviews", ^id(IMP old, SEL sel){
-            return ^(id v){ ((void (*)(id,SEL))old)(v,sel); [QTSponsorBars addObject:v]; QTRenderSponsorMarkers(v,v,YES); };
-        });
-        // also hook any other class that has the didActivate selector (21.38.2 moved it)
-        // we already did scan in tryHook
-    };
-    install();
-    for (NSNumber *d in @[@1,@3,@8]) dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(d.doubleValue*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{ install(); });
-    dispatch_async(dispatch_get_main_queue(), ^{
-        static NSTimer *poll=nil; if(poll) return;
-        poll=[NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(__unused NSTimer *t){
-            if (!QTSponsorSkipEnabled()) return;
-            if (!QTCurrentVideoID || !QTCurrentSponsorController){
-                NSString *found=QTFindVideoIDViaGIMMe()?:QTFindVideoIDByScanningWindows();
-                if (found.length==11 && ![found isEqualToString:QTCurrentVideoID]){
-                    if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(found), @"result": @"poll_found", @"cached": @(0)});
-                    QTSponsorNotifyVideoIDChanged(found);
-                } else if (!found.length && QTDEnabled()){
-                    static NSTimeInterval last=0; if (CACurrentMediaTime()-last>10){ last=CACurrentMediaTime(); QTDEvent(QTDESponsorFetch, @{@"prefix":@"none", @"result":@"poll_novid", @"cached":@(0)}); }
-                }
-            }
-            if (QTCurrentSponsorController){
-                double cur=QTDoubleMessage(QTCurrentSponsorController, @[@"currentVideoMediaTime"]);
-                if (cur>0 && QTSponsorTimeUpdatesEnabled) QTEvaluateSponsorTime(QTCurrentSponsorController, cur);
-            }
-        }];
-        @try{ NSString *f=QTFindVideoIDViaGIMMe()?:QTFindVideoIDByScanningWindows(); if (f.length==11) QTSponsorNotifyVideoIDChanged(f); } @catch(__unused NSException *e){}
-    });
+    // Engine owns all hooks/polling — shim does nothing more.
 }
 NSString *QTSponsorReport(void){
-    return [NSString stringWithFormat:@"SponsorSkip: enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu fetches=%lu cacheHits=%lu currentPrefix=%@ segments=%lu\n", QTSponsorSkipEnabled()?@"on":@"off", QTSponsorSkipIntroOutroEnabled()?@"on":@"off", QTSponsorSkipSelfPromoEnabled()?@"on":@"off", (unsigned long)QTSponsorSkippedTotal, (unsigned long)QTSponsorFetchCount, (unsigned long)QTSponsorCacheHits, QTCurrentVideoID?(QTSponsorPrefixForVideoID(QTCurrentVideoID)?:@"none"):@"none", (unsigned long)(QTCurrentSegments.count ?: ((NSArray*)objc_getAssociatedObject(QTCurrentSponsorController, QTSponsorSegmentsAssoc)).count)];
+    extern NSString *QTSponsorEngineReport(void);
+    NSString *engine = QTSponsorEngineReport();
+    NSString *legacy = [NSString stringWithFormat:@"SponsorSkip(legacy): enabled=%@ introOutro=%@ selfPromo=%@ skipped=%lu fetches=%lu cacheHits=%lu currentPrefix=%@ segments=%lu\n", QTSponsorSkipEnabled()?@"on":@"off", QTSponsorSkipIntroOutroEnabled()?@"on":@"off", QTSponsorSkipSelfPromoEnabled()?@"on":@"off", (unsigned long)QTSponsorSkippedTotal, (unsigned long)QTSponsorFetchCount, (unsigned long)QTSponsorCacheHits, QTCurrentVideoID?(QTSponsorPrefixForVideoID(QTCurrentVideoID)?:@"none"):@"none", (unsigned long)(QTCurrentSegments.count ?: ((NSArray*)objc_getAssociatedObject(QTCurrentSponsorController, QTSponsorSegmentsAssoc)).count)];
+    return [engine stringByAppendingString:legacy];
 }
 NSUInteger QTSponsorSkippedCount(void){ return QTSponsorSkippedTotal; }

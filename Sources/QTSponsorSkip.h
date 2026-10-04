@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 
-// QuietTube SponsorSkip — SponsorBlock integration, hash-private, off by default.
+// QuietTube SponsorSkip -- SponsorBlock integration, hash-private, off by default.
 // No network when disabled. When enabled, fetches via 4-char SHA256 prefix.
 
 extern NSString * const QTSponsorSkipEnabledKey; // QuietTube.v1.sponsorSkip

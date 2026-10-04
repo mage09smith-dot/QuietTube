@@ -108,7 +108,7 @@ static BOOL QTDropNode(id node) {
     }
 // END 0.9.1 WATCH AGAIN
     QTObserveUnmatchedElement(data); // observation only; never changes the filtering decision
-    QTCount(@"element retained — no active rule matched");
+    QTCount(@"element retained -- no active rule matched");
     return NO;
 }
 static id QTFilteredNode(id node, NSUInteger depth);
@@ -192,12 +192,12 @@ void QTInstallFeatures(void) {
                         // Never turn a nonempty top-level presentation batch empty.
                         // Prefer showing ads to sending a fabricated empty batch.
                         if (sections.count > 0 && filtered.count == 0) {
-                            QTCount(@"empty presentation batch prevented — kept original");
+                            QTCount(@"empty presentation batch prevented -- kept original");
                             filtered = sections;
                         }
                     }
                     @catch (__unused NSException *error) {
-                        QTCount(@"presentation filter exception — kept original");
+                        QTCount(@"presentation filter exception -- kept original");
                         filtered = sections;
                     }
                 }
@@ -212,6 +212,6 @@ void QTInstallFeatures(void) {
     QTNoArgAction(@"YTWatchFlowController",@"playAutoplay",@"autoplay");
     QTNoArgAction(@"YTQueueController",@"triggerPendingAutoplay",@"autoplay");
     // handleError is owned by QTPlaybackFix (installed in QTStart before
-    // QTInstallFeatures).  Do not double-hook — PlaybackFix already observes
+    // QTInstallFeatures).  Do not double-hook -- PlaybackFix already observes
     // errors, trips the ad-profile latch, and retries stall codes.
 }

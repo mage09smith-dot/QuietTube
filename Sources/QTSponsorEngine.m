@@ -39,13 +39,13 @@ static double QTEDblMsg(id obj, NSArray<NSString*> *sels) {
 static NSString *QTEVideoIDFromObj(id obj) {
     if ([obj isKindOfClass:NSString.class] && [(NSString*)obj length]==11) return obj;
     if ([obj isKindOfClass:NSString.class]) {
-        // not 11 chars — not a videoID
+        // not 11 chars -- not a videoID
     }
     for (NSString *sel in @[@"videoID",@"videoId",@"currentVideoID",@"identifier"]) {
         id v = QTEObjMsg(obj, sel);
         if ([v isKindOfClass:NSString.class] && [v length]==11) return v;
         if ([v isKindOfClass:NSString.class] && [v length]>0 && [v length]!=11) {
-            // might be channel ID — skip
+            // might be channel ID -- skip
         }
     }
     id det = QTEObjMsg(obj, @"videoDetails");
@@ -85,7 +85,7 @@ static NSString *QTEFindViaGIMMe(void) {
     }
     return nil;
 }
-// Undo stack — last 8 skips, repeatable
+// Undo stack -- last 8 skips, repeatable
 static NSMutableArray<NSDictionary*> *QTEUndoStack; // each: @{seg:..., from:..., idx:...}
 static const NSUInteger QTEUndoCap = 8;
 static NSMutableSet<NSNumber*> *QTEUndoGrace; // indices currently in grace (play through once)
@@ -143,7 +143,7 @@ static BOOL QTEIsInUndoGrace(NSNumber *idx, double time) {
     NSNumber *end = QTEUndoGraceEnds[idx];
     if (!end) return YES;
     if (time > [end doubleValue] + 1.2) {
-        // Passed grace — remove
+        // Passed grace -- remove
         [QTEUndoGrace removeObject:idx];
         [QTEUndoGraceEnds removeObjectForKey:idx];
         if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"result":@"grace_expired", @"start":@((long long)(time*1000))});
@@ -271,7 +271,7 @@ static void QTEFetch(NSString *vid, void (^completion)(NSArray *segs)) {
     if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(vid)?:@"none", @"result":@"start", @"cached":@(0)});
     tryMirror = ^{
         if (mirrorIdx >= (NSInteger)mirrors.count) {
-            // all mirrors failed — keep disk if we had it, otherwise report empty
+            // all mirrors failed -- keep disk if we had it, otherwise report empty
             if (!hadDiskSegments && completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[]); });
             return;
         }
@@ -331,7 +331,7 @@ static void QTEFetch(NSString *vid, void (^completion)(NSArray *segs)) {
                 return;
             } else if (status==404) {
                 if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(wvid)?:@"none", @"result":@"not_found", @"status":@(status)});
-                // 404 is authoritative empty — video truly has no segments
+                // 404 is authoritative empty -- video truly has no segments
                 NSArray *empty=@[];
                 if (wvid && wPath) {
                     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0), ^{
@@ -340,7 +340,7 @@ static void QTEFetch(NSString *vid, void (^completion)(NSArray *segs)) {
                         if (d) [d writeToFile:wPath options:NSDataWritingAtomic error:nil];
                     });
                 }
-                // don't clobber disk if it had data — 404 may be per-mirror inconsistency
+                // don't clobber disk if it had data -- 404 may be per-mirror inconsistency
                 dispatch_async(dispatch_get_main_queue(), ^{
                     if (hadDiskSegments && QTECurrentSegments.count>0) {
                         if (completion) completion(QTECurrentSegments);
@@ -352,7 +352,7 @@ static void QTEFetch(NSString *vid, void (^completion)(NSArray *segs)) {
                 });
                 return;
             } else {
-                // Cloudflare / timeout / 5xx — try next mirror
+                // Cloudflare / timeout / 5xx -- try next mirror
                 if (QTDEnabled()) QTDEvent(QTDESponsorFetch, @{@"prefix": QTSponsorPrefixForVideoID(wvid)?:@"none", @"result":@"mirror_failed", @"status":@(status)});
                 mirrorIdx++;
                 tryMirror();
@@ -430,7 +430,7 @@ static void QTEEvaluate(id controller, double time) {
                 undo.backgroundColor=[UIColor colorWithWhite:1 alpha:0.14]; undo.layer.cornerRadius=8;
                 undo.contentEdgeInsets=UIEdgeInsetsMake(6, 12, 6, 12);
                 [undo addTarget:nil action:@selector(QTEUndoTapped) forControlEvents:UIControlEventTouchUpInside];
-                // Undo via UIAction — dismiss banner then seek.  Keep button alive after dismiss.
+                // Undo via UIAction -- dismiss banner then seek.  Keep button alive after dismiss.
                 __weak UIView *weakBanner = banner;
                 [undo addAction:[UIAction actionWithTitle:@"" image:nil identifier:nil handler:^(__kindof UIAction *a){
                     UIView *b = weakBanner ?: objc_getAssociatedObject(a.sender, "banner");

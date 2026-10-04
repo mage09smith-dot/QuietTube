@@ -10,7 +10,7 @@ static BOOL QTResetNativeLogo(id receiver) {
         ((void (*)(id,SEL))objc_msgSend)(receiver,reset);
         return YES;
     } @catch (__unused NSException *exception) {
-        QTCount(@"native logo reset failed — kept original"); return NO;
+        QTCount(@"native logo reset failed -- kept original"); return NO;
     } @finally { QTLogoResetting=NO; }
 }
 void QTInstallPlainLogo(void) {

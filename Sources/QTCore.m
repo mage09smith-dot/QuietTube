@@ -34,14 +34,14 @@ NSArray<NSDictionary *> *QTOptions(void) {
              @"note":@"Native player no-op plus scoped feed insertion filtering (requires feed ads). Experimental; restart required. Stops on observed playback errors." },
 // END 0.13 AD PROFILE
 // BEGIN 0.9.1 WATCH AGAIN
-          @{ @"key":@"watchAgain", @"title":@"Hide “Watch it again” shelves", @"group":@"Distractions", @"default":@NO,
+          @{ @"key":@"watchAgain", @"title":@"Hide Watch it again shelves", @"group":@"Distractions", @"default":@NO,
              @"note":@"English shelf-title matching, including an experimental horizontal-element fallback. Requires Extended feed formats. Does not delete watch history." },
 // END 0.9.1 WATCH AGAIN
           @{ @"key":@"mixes", @"title":@"Hide Mix recommendations", @"group":@"Distractions", @"default":@NO,
              @"note":@"Mix/radio renderer and RD playlist destination matching. Requires Extended feed formats. Nested Mix links may also match; does not use video titles." },
           @{ @"key":@"displayAds", @"title":@"Additional display-ad formats", @"group":@"Distractions", @"default":@NO,
              @"note":@"Experimental image/display-ad template families. Requires Extended feed formats and Feed ads. May match nested promotional content." },
-          @{ @"key":@"topicsShelves", @"title":@"Hide “Explore more topics” shelves", @"group":@"Distractions", @"default":@NO,
+          @{ @"key":@"topicsShelves", @"title":@"Hide Explore more topics shelves", @"group":@"Distractions", @"default":@NO,
              @"note":@"Experimental chips-shelf / exact shelf-title matching. Requires Extended feed formats; other chips shelves may also match." },
           @{ @"key":@"edgeCards", @"title":@"Hide edge-to-edge video cards", @"group":@"Distractions", @"default":@NO,
              @"note":@"Experimental inline/portrait video-card heuristic; not exact geometry detection. May also hide compact portrait cards. Requires Extended feed formats." },
@@ -69,7 +69,7 @@ NSArray<NSDictionary *> *QTOptions(void) {
 
 static BOOL QTIsExpBuild(void) {
     // FIX: YouTube's CFBundleShortVersionString is 21.38.2, so checking mainBundle always returned NO for exp builds.
-    // Check the compiled QuietTube version first — this string is replaced at build time and contains "exp" for test builds.
+    // Check the compiled QuietTube version first -- this string is replaced at build time and contains "exp" for test builds.
     NSString *compiled = @"1.3.0-exp.34";
     if ([compiled containsString:@"exp"]) return YES;
     NSString *ver = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
@@ -108,7 +108,7 @@ void QTRegisterDefaults(void) {
             [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"sponsorSkip"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipIntroOutro"]];
             [d setBool:NO forKey:[QTPrefix stringByAppendingString:@"sponsorSkipSelfPromo"]];
-            // Seed useWebClient ON for fresh exp37 installs — will be re-ensured below for upgrades
+            // Seed useWebClient ON for fresh exp37 installs -- will be re-ensured below for upgrades
             [d setBool:YES forKey:[QTPrefix stringByAppendingString:@"useWebClient"]];
             [d setBool:YES forKey:@"QuietTube.v1.enhancedLogging"];
             [d setBool:YES forKey:migratedKey];
@@ -136,7 +136,7 @@ void QTRegisterDefaults(void) {
             if ([d objectForKey:full]==nil) [d setBool:NO forKey:full];
         }
     }
-    // useWebClient — default ON to permanently prevent PoToken stalls.
+    // useWebClient -- default ON to permanently prevent PoToken stalls.
     // Canonical key is QuietTube.v1.useWebClient.  For exp36->exp37 migration,
     // respect an explicit OFF the user set; otherwise flip absent to ON.
     {
@@ -153,13 +153,13 @@ void QTRegisterDefaults(void) {
             [d setBool:[d boolForKey:canonical] forKey:legacy];
         }
         // One-time correction for exp36 users stuck on OFF: log but do NOT
-        // force if they explicitly chose OFF — respect their save.
+        // force if they explicitly chose OFF -- respect their save.
     }
     NSMutableDictionary *active = [NSMutableDictionary dictionary];
     active[@"enabled"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"enabled"]]);
     for (NSDictionary *o in QTOptions())
         active[o[@"key"]] = @(![o[@"disabled"] boolValue] && [d boolForKey:[QTPrefix stringByAppendingString:o[@"key"]]]);
-    // useWebClient is not in QTOptions() — include it explicitly so QTOn and restart check see it
+    // useWebClient is not in QTOptions() -- include it explicitly so QTOn and restart check see it
     active[@"useWebClient"] = @([d boolForKey:[QTPrefix stringByAppendingString:@"useWebClient"]]);
     QTActiveFlags = [active copy]; // immutable until next process launch
     QTStatuses = [NSMutableDictionary dictionary];
@@ -228,7 +228,7 @@ void QTHook(NSString *name, NSString *selector, NSString *expected, id (^factory
                  QTType(sig.methodReturnType) == [expected characterAtIndex:0];
     for (NSUInteger i=2; valid && i<sig.numberOfArguments; i++)
         valid = QTType([sig getArgumentTypeAtIndex:i]) == [expected characterAtIndex:i-1];
-    if (!valid) { QTStatus(key, @"signature mismatch — skipped"); return; }
+    if (!valid) { QTStatus(key, @"signature mismatch -- skipped"); return; }
     IMP old = method_getImplementation(method);
     IMP replacement = imp_implementationWithBlock(factory(old, sel));
     if (!replacement) { QTStatus(key, @"block creation failed"); return; }
@@ -321,7 +321,7 @@ void QTIntegrityEarlyBundleSpoof(void);
 __attribute__((constructor)) static void QTStart(void) {
     @autoreleasepool {
         @try {
-            // LiveContainer: mainBundle may not be ready yet — use low-level check first.
+            // LiveContainer: mainBundle may not be ready yet -- use low-level check first.
             NSString *bid = nil;
             @try { bid = NSBundle.mainBundle.bundleIdentifier; } @catch (__unused NSException *e) {}
             if (!bid) {
@@ -329,7 +329,7 @@ __attribute__((constructor)) static void QTStart(void) {
                 @try { bid = NSBundle.mainBundle.executablePath; } @catch (__unused NSException *e) {}
                 if (bid && ![bid containsString:@"YouTube"] && ![bid containsString:@"youtube"]) return;
             } else if (![bid containsString:@"youtube"] && ![bid isEqualToString:@"com.google.ios.youtube"]) {
-                // Not YouTube — do not install.
+                // Not YouTube -- do not install.
                 return;
             }
             // CRASH FIX: only do minimal bundle spoof synchronously at constructor time.

@@ -28,7 +28,7 @@
         NSMutableArray *rows=[NSMutableArray array];
         for (NSString *key in [[self.preview allKeys] sortedArrayUsingSelector:@selector(compare:)]) {
             BOOL before=QTSavedSetting(key), after=[self.preview[key] boolValue];
-            [rows addObject:@{@"title":QTSettingTitle(key),@"note":[NSString stringWithFormat:@"%@ → %@%@",before?@"On":@"Off",after?@"On":@"Off",before==after?@" (unchanged)":@""],@"readOnly":@YES}];
+            [rows addObject:@{@"title":QTSettingTitle(key),@"note":[NSString stringWithFormat:@"%@ -> %@%@",before?@"On":@"Off",after?@"On":@"Off",before==after?@" (unchanged)":@""],@"readOnly":@YES}];
         }
         self.rows=rows;
         self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithTitle:@"Apply" style:UIBarButtonItemStyleDone target:self action:@selector(applyPreset)];
@@ -53,7 +53,7 @@
         if ([self.group isEqualToString:@"Troubleshooting"]) {
             // 1.2.0: single master + export + clear (replaces 10 old controls)
             rows=[NSMutableArray arrayWithArray:@[
-                @{@"title":@"Enhanced logging",@"action":@"toggleEnhancedLogging",@"note":@"One master switch. When on, captures daily feed/player clues locally (3 × 256 KiB, 7-day, no upload). Use Export as soon as you see something odd — no need to reproduce after turning it on."},
+                @{@"title":@"Enhanced logging",@"action":@"toggleEnhancedLogging",@"note":@"One master switch. When on, captures daily feed/player clues locally (3 x 256 KiB, 7-day, no upload). Use Export as soon as you see something odd -- no need to reproduce after turning it on."},
                 @{@"title":@"Export logs",@"action":@"exportDiagnostics",@"note":@"Share the last 3 sessions + current support snapshot. Review before sharing. Files are in app cache; iOS can purge them."},
                 @{@"title":@"Clear logs",@"action":@"clearDiagnostics",@"note":@"Deletes local log files. Does not turn off the master switch."}]];
         }
@@ -63,7 +63,7 @@
                 @{@"title":@"Also skip Intro / Outro",@"key":@"sponsorSkipIntroOutro",@"note":@"Also skip intro and outro when SponsorSkip is on. Blue/amber markers on seek bar."},
                 @{@"title":@"Also skip Self-promo",@"key":@"sponsorSkipSelfPromo",@"note":@"Also skip unpaid self-promotion when SponsorSkip is on. Yellow markers."},
                 @{@"title":@"Segments skipped this session",@"action":@"sponsorStats",@"note":@"Tap to see counts and current video segments."},
-                @{@"title":@"⚠️ Community data — not always correct",@"note":@"Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as 'sponsor'. This has been abused to censor content you might want to see. If a video jumps or cuts content, turn SponsorSkip off and replay. You can review and vote on segments at sponsor.ajay.app. SponsorSkip is off by default for this reason.",@"readOnly":@YES}
+                @{@"title":@"[W] Community data -- not always correct",@"note":@"Segments are submitted by viewers, not YouTube. People sometimes mark entire videos or non-sponsor parts as 'sponsor'. This has been abused to censor content you might want to see. If a video jumps or cuts content, turn SponsorSkip off and replay. You can review and vote on segments at sponsor.ajay.app. SponsorSkip is off by default for this reason.",@"readOnly":@YES}
             ]];
         }
         if ([self.group isEqualToString:@"Playback"]) {
@@ -83,11 +83,11 @@
 }
 - (NSString *)tableView:(UITableView *)tv titleForFooterInSection:(NSInteger)section {
     if (self.preview) return @"Only the settings listed above will be saved. No change is made until you tap Apply. All other preferences are preserved. Fully close and reopen the app afterward.";
-    NSString *state=QTSettingsPendingRestart()?@"Restart required — fully close and reopen the app to apply saved changes.":@"Changes take effect after fully closing and reopening the app.";
-    if (QTEnhancedEnabled() || QTDEnabled()) state=[state stringByAppendingString:@"\n● Enhanced logging: collecting locally (3 × 256 KiB, 7-day, no upload). Tap the row in Troubleshooting to stop."];
-    else state=[state stringByAppendingString:@"\n○ Enhanced logging off. Turn it on in Troubleshooting to capture daily feed/player clues."];
+    NSString *state=QTSettingsPendingRestart()?@"Restart required -- fully close and reopen the app to apply saved changes.":@"Changes take effect after fully closing and reopening the app.";
+    if (QTEnhancedEnabled() || QTDEnabled()) state=[state stringByAppendingString:@"\n- Enhanced logging: collecting locally (3 x 256 KiB, 7-day, no upload). Tap the row in Troubleshooting to stop."];
+    else state=[state stringByAppendingString:@"\no Enhanced logging off. Turn it on in Troubleshooting to capture daily feed/player clues."];
     if (QTAdProfilePaused()) state=[state stringByAppendingString:@"\nAd protection paused this session after a playback error. Your saved choice is unchanged. Reopen the app to retry."];
-    return [NSString stringWithFormat:@"%@\n%@\n1.3.0-exp.34 · Unofficial, not affiliated with YouTube. Use YouTube’s own Picture in Picture setting.",state,QTSavedSetting(@"enabled")?@"":@"QuietTube is disabled for the next launch. Enable the master switch to use these options."];
+    return [NSString stringWithFormat:@"%@\n%@\n1.3.0-exp.34 - Unofficial, not affiliated with YouTube. Use YouTube's own Picture in Picture setting.",state,QTSavedSetting(@"enabled")?@"":@"QuietTube is disabled for the next launch. Enable the master switch to use these options."];
 }
 - (void)toggleEnhancedLogging:(UISwitch *)sender {
     BOOL wantOn = sender.on;
@@ -95,11 +95,11 @@
         if (!QTOn(@"enabled")) { [self showNotice:@"Enable QuietTube and restart first"]; sender.on = NO; return; }
         if (QTEnhancedStart()) {
             if ([[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqualToString:@"21.38.2"]) QTInstallFeatures();
-            [self showNotice:@"Enhanced logging started • Collecting locally"];
+            [self showNotice:@"Enhanced logging started - Collecting locally"];
         } else { [self showNotice:@"Diagnostics unavailable or busy"]; sender.on = NO; [[NSUserDefaults standardUserDefaults] setObject:@(NO) forKey:@"QuietTube.v1.enhancedLogging"]; }
     } else {
         QTEnhancedStop();
-        [self showNotice:@"Enhanced logging stopped • Files kept until cleared"];
+        [self showNotice:@"Enhanced logging stopped - Files kept until cleared"];
     }
     [self.tableView reloadData];
 }
@@ -114,8 +114,8 @@
     cell.detailTextLabel.numberOfLines=0; cell.detailTextLabel.text=row[@"note"];
     if ([row[@"action"] isEqualToString:@"toggleEnhancedLogging"]) {
         BOOL on = QTEnhancedEnabled() || QTDEnabled();
-        cell.textLabel.text = on ? @"● Enhanced logging — Collecting" : @"○ Enhanced logging — Off";
-        cell.detailTextLabel.text = on ? @"Collecting logs locally (3 × 256 KiB, 7-day, no upload). Tap switch or row to stop. Export anytime you see odd feed/ads." : @"Off. Tap switch or row to start — captures during daily use; export as soon as you see something odd.";
+        cell.textLabel.text = on ? @"- Enhanced logging -- Collecting" : @"o Enhanced logging -- Off";
+        cell.detailTextLabel.text = on ? @"Collecting logs locally (3 x 256 KiB, 7-day, no upload). Tap switch or row to stop. Export anytime you see odd feed/ads." : @"Off. Tap switch or row to start -- captures during daily use; export as soon as you see something odd.";
         UISwitch *toggle = [UISwitch new];
         toggle.on = on;
         toggle.accessibilityLabel = @"Enhanced logging";
@@ -138,7 +138,7 @@
             toggle.enabled = NO;
             toggle.on = NO;
             cell.textLabel.enabled = NO;
-            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ — Enable SponsorSkip first.", row[@"note"] ?: @""];
+            cell.detailTextLabel.text = [NSString stringWithFormat:@"%@ -- Enable SponsorSkip first.", row[@"note"] ?: @""];
         } else {
             // Keep controls usable: enabling an option saves its prerequisites too.
             NSDictionary *required=QTSettingChanges(key,YES);
@@ -183,7 +183,7 @@
     }
     QTSaveSettings(changes);
     [self.tableView reloadData];
-    [self showNotice:QTSettingsPendingRestart()?@"Saved · Restart to apply":@"Saved · No restart pending"];
+    [self showNotice:QTSettingsPendingRestart()?@"Saved - Restart to apply":@"Saved - No restart pending"];
 }
 - (void)applyPreset {
     QTSaveSettings(self.preview);
@@ -193,7 +193,7 @@
     UINavigationController *navigation=self.navigationController;
     [navigation popViewControllerAnimated:YES];
     QTOptionsController *parent=(QTOptionsController *)navigation.topViewController;
-    if ([parent isKindOfClass:QTOptionsController.class]) { [parent.tableView reloadData]; [parent showNotice:QTSettingsPendingRestart()?@"Preset saved · Restart to apply":@"Preset saved · No restart pending"]; }
+    if ([parent isKindOfClass:QTOptionsController.class]) { [parent.tableView reloadData]; [parent showNotice:QTSettingsPendingRestart()?@"Preset saved - Restart to apply":@"Preset saved - No restart pending"]; }
 }
 - (void)showText:(NSString *)content title:(NSString *)title {
     UIViewController *page=[UIViewController new]; page.title=title;
@@ -222,12 +222,12 @@
         BOOL isOn = QTEnhancedEnabled() || QTDEnabled();
         if (isOn) {
             QTEnhancedStop();
-            [self showNotice:@"Enhanced logging stopped • Files kept"];
+            [self showNotice:@"Enhanced logging stopped - Files kept"];
         } else {
             if (!QTOn(@"enabled")) { [self showNotice:@"Enable QuietTube and restart first"]; return; }
             if (QTEnhancedStart()) {
                 if ([[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqualToString:@"21.38.2"]) QTInstallFeatures();
-                [self showNotice:@"Enhanced logging started • Collecting locally"];
+                [self showNotice:@"Enhanced logging started - Collecting locally"];
             } else [self showNotice:@"Diagnostics unavailable or busy"];
         }
         [self.tableView reloadData];
@@ -237,11 +237,11 @@
         __weak QTOptionsController *weakSelf=self;
         QTDClear(^{ dispatch_async(dispatch_get_main_queue(),^{
             QTOptionsController *page=weakSelf; page.diagnosticBusy=NO;
-            [page.tableView reloadData]; [page showNotice:@"Logs cleared — master stays as set"];
+            [page.tableView reloadData]; [page showNotice:@"Logs cleared -- master stays as set"];
         }); });
     } else if ([row[@"action"] isEqualToString:@"exportDiagnostics"]) {
         if (self.diagnosticBusy) return;
-        self.diagnosticBusy=YES; [self showNotice:@"Preparing logs…"];
+        self.diagnosticBusy=YES; [self showNotice:@"Preparing logs..."];
         NSString *context;
         @try { context=QTDiagnostics(); }
         @catch (__unused NSException *exception) { context=@"Current support snapshot unavailable.\n"; }
@@ -269,7 +269,7 @@
             [[NSUserDefaults standardUserDefaults] setObject:@(NO) forKey:@"QuietTube.v1.enhancedLogging"];
             QTEnhancedStop();
             QTSponsorCacheClear();
-            [self.tableView reloadData]; [self showNotice:@"Options disabled · Restart to apply"];
+            [self.tableView reloadData]; [self showNotice:@"Options disabled - Restart to apply"];
         }]];
         [self presentViewController:alert animated:YES completion:nil];
     }

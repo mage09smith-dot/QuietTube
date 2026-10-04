@@ -15,7 +15,7 @@ static NSArray<NSDictionary *> *QTCatalog(void) {
           @[@"edgeCards",@"Feed",@"Hide large portrait cards",@"Hide recognized edge-to-edge and inline portrait cards. Some smaller portrait cards may also match."],
           @[@"playables",@"Feed",@"Hide Playables",@"Hide recognized game shelves."],
           @[@"eventPromos",@"Feed",@"Hide promotional shelves",@"Hide recognized featured and event cards. Does not change the logo."],
-          @[@"background",@"Playback",@"Background audio",@"Keep audio playing when you leave the app. Use YouTube’s own setting for Picture in Picture."],
+          @[@"background",@"Playback",@"Background audio",@"Keep audio playing when you leave the app. Use YouTube's own setting for Picture in Picture."],
           @[@"autoplay",@"Playback",@"Stop the next video",@"Prevent selected automatic next-video actions, not feed previews."],
           @[@"useWebClient",@"Playback",@"Prefer WEB player (fewer errors)",@"When on, the WEB player is used internally. This avoids the 'Something went wrong' PoToken error entirely, like uBlock on web. May affect quality. Restart required."],
           @[@"plainLogo",@"Appearance",@"Classic YouTube logo",@"Replace seasonal and event logo artwork."],

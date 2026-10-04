@@ -266,7 +266,7 @@ void QTDClear(void (^completion)(void)) {
     QTDPrepare();
     @synchronized(QTDLock) {
         // Keep the persistent master as-is; only stop transient admission before deletion.
-        // The UI's Clear button does not turn off the master — toggle does.
+        // The UI's Clear button does not turn off the master -- toggle does.
         BOOL wasRecording=QTDRecording;
         QTDRecording=NO;
         dispatch_async(QTDQueue, ^{

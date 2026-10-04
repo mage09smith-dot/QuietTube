@@ -47,7 +47,7 @@ BOOL QTSponsorCategoryEnabled(NSString *cat) {
     return NO;
 }
 static NSInteger QTSponsorCategoryBehavior(NSString *cat) {
-    // 0 = skip, 1 = ask, 2 = hidden, 3 = disabled — we only auto-skip sponsor, others follow prefs
+    // 0 = skip, 1 = ask, 2 = hidden, 3 = disabled -- we only auto-skip sponsor, others follow prefs
     if ([cat isEqualToString:@"sponsor"]) return 0;
     if ([cat isEqualToString:@"intro"] || [cat isEqualToString:@"outro"]) return QTSponsorSkipIntroOutroEnabled()?0:3;
     if ([cat isEqualToString:@"selfpromo"]) return QTSponsorSkipSelfPromoEnabled()?0:3;
@@ -140,7 +140,7 @@ NSArray<NSDictionary*> *QTSponsorCacheLoad(NSString *vid){
 }
 void QTSponsorCacheClear(void){ [QTSponsorMemoryCache removeAllObjects]; }
 
-// Shim fetch — delegates to engine. Kept for external callers/tests.
+// Shim fetch -- delegates to engine. Kept for external callers/tests.
 void QTSponsorFetch(NSString *vid, void (^completion)(NSArray<NSDictionary*> *segs)){
     if (!vid.length){ if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(@[]); }); return; }
     NSArray<NSString*> *cats=QTSponsorEnabledCategories();
@@ -161,7 +161,7 @@ void QTSponsorFetch(NSString *vid, void (^completion)(NSArray<NSDictionary*> *se
         }
         [QTSponsorClientCacheGet() setObject:norm forKey:cacheKey];
         if(completion) dispatch_async(dispatch_get_main_queue(), ^{ completion(norm); });
-        // still refresh from network in background — mem may be stale
+        // still refresh from network in background -- mem may be stale
     }
     NSURLComponents *comp=[NSURLComponents componentsWithString:@"https://sponsor.ajay.app/api/skipSegments"];
     NSData *catData=[NSJSONSerialization dataWithJSONObject:cats options:0 error:nil];
@@ -341,7 +341,7 @@ static void QTEvaluateSponsorTime(id controller, double time){
             if (QTDEnabled()) QTDEvent(QTDESponsorSkip, @{@"prefix": QTCurrentVideoID?QTSponsorPrefixForVideoID(QTCurrentVideoID):@"none", @"result": @"skipped", @"category": cat, @"start": @((long long)(start*1000)), @"end": @((long long)(end*1000)), @"skipped": @(QTSponsorSkippedTotal)});
             // show Undo HUD
             dispatch_async(dispatch_get_main_queue(), ^{
-                // minimal HUD — reuse existing banner if available
+                // minimal HUD -- reuse existing banner if available
                 UIViewController *top = nil;
                 for (UIScene *sc in UIApplication.sharedApplication.connectedScenes) {
                     if (![sc isKindOfClass:UIWindowScene.class]) continue;
@@ -470,7 +470,7 @@ static void QTRenderSponsorMarkers(UIView *receiver, UIView *target, BOOL fullHe
 }
 
 void QTSponsorNotifyVideoIDChanged(NSString *vid){
-    // Pure delegate — engine owns all state. Keep legacy globals in sync for diagnostics.
+    // Pure delegate -- engine owns all state. Keep legacy globals in sync for diagnostics.
     extern void QTSponsorEngineVideoChanged(NSString *vid);
     if (!vid.length) return;
     QTCurrentVideoID = [vid copy];
@@ -483,7 +483,7 @@ void QTSponsorNotifyVideoIDChanged(NSString *vid){
 }
 
 void QTSponsorInstall(void){
-    // Pure delegate — QTSponsorEngine is the single source of truth.
+    // Pure delegate -- QTSponsorEngine is the single source of truth.
     // This shim exists only for backwards-compat callers and test harness.
     extern void QTSponsorEngineInstall(void);
     QTSponsorEngineInstall();
@@ -491,7 +491,7 @@ void QTSponsorInstall(void){
     QTCount(@"sponsorSkip: installed (shim)");
     if (QTDEnabled()) QTDEvent(QTDESponsorCache, @{@"result": @"installed", @"cached": @(1)});
     QTSponsorTimeUpdatesEnabled=QTSponsorSkipEnabled();
-    // Engine owns all hooks/polling — shim does nothing more.
+    // Engine owns all hooks/polling -- shim does nothing more.
 }
 NSString *QTSponsorReport(void){
     extern NSString *QTSponsorEngineReport(void);

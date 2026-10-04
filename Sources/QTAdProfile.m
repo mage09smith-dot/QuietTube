@@ -45,7 +45,7 @@ BOOL QTAdProfileActive(void) { return QTOn(@"enabled") && QTAdActive(); }
 void QTAdPlaybackError(NSError *error) {
     if (!QTOn(@"adTest")) return;
     // Bulletproof fix: code 14/0 ("Something went wrong") are integrity/PoToken
-    // stalls — NOT caused by the ad profile and must NOT trip the latch.
+    // stalls -- NOT caused by the ad profile and must NOT trip the latch.
     // Only other errors are real ad-profile side effects.
     BOOL isIntegrityStall = [error.domain isEqualToString:@"com.google.ios.youtube.ErrorDomain.playback"] && (error.code == 14 || error.code == 0);
     if (isIntegrityStall) {
@@ -119,7 +119,7 @@ void QTInstallAdProfile(void) {
         Method initializer=noOpClass?class_getInstanceMethod(noOpClass,NSSelectorFromString(@"initWithServiceRegistryScope:delegate:")):NULL;
         const char *ivarType=scopeIvar?ivar_getTypeEncoding(scopeIvar):NULL;
         if (!initializer || !ivarType || ivarType[0]!='@' || strcmp(method_getTypeEncoding(initializer),"@32@0:8@16@24")) {
-            QTAdRecord(@"native constructor or scope ABI unavailable — native unchanged");
+            QTAdRecord(@"native constructor or scope ABI unavailable -- native unchanged");
             return;
         }
         SEL sel=NSSelectorFromString(@"adsPlaybackCoordinatorWithOverlayManager:delegate:parentResponder:contentPlayerResponse:");
@@ -135,21 +135,21 @@ void QTInstallAdProfile(void) {
                             // Same verified native constructor, scope and delegate.
                             // Does not depend on a player response/config existing yet.
                             result=[(id<QTNativeNoOpInitializer>)[noOpClass alloc] initWithServiceRegistryScope:scope delegate:delegate];
-                        } else QTAdRecord(@"missing scope or delegate — original factory fallback");
+                        } else QTAdRecord(@"missing scope or delegate -- original factory fallback");
                     } @catch (__unused NSException *exception) {
-                        QTAdRecord(@"native no-op construction exception — original factory fallback");
+                        QTAdRecord(@"native no-op construction exception -- original factory fallback");
                     }
                     if (result && [result isKindOfClass:noOpClass]) {
                         QTAdRecord(@"native no-op coordinator supplied");
                         return result;
                     }
-                    QTAdRecord(@"no valid no-op coordinator — original factory fallback");
+                    QTAdRecord(@"no valid no-op coordinator -- original factory fallback");
                 }
                 // No retries or nil substitution. Native exceptions remain visible.
                 return ((id (*)(id,SEL,id,id,id,id))old)(object,selector,overlay,delegate,parent,response);
             };
         });
         QTPlayerProfileInstalled=class_getMethodImplementation(factoryClass,sel)!=before;
-        QTAdRecord(QTPlayerProfileInstalled?@"player factory hook installed":@"player factory hook unavailable — native unchanged");
+        QTAdRecord(QTPlayerProfileInstalled?@"player factory hook installed":@"player factory hook unavailable -- native unchanged");
     }
 }

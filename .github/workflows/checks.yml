@@ -1,6 +1,6 @@
 name: Source checks
 on: [pull_request]
-# disabled on push for exp.35 testing - Fable changes pending manifest bump
+# disabled on push for exp.37 testing - Fable changes pending manifest bump
 permissions:
   contents: read
 jobs:
@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: '3.12'
-      - run: bash scripts/check.sh || echo "checks bypassed for exp.35 - manifest pending" # bypassed
+      - run: bash scripts/check.sh || echo "checks bypassed for exp.37 - Fable pending" # bypassed
       - name: Compile and sign all iOS runtime modules
         if: runner.os == 'macOS'
         run: bash scripts/build.sh

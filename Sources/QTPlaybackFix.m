@@ -7,7 +7,7 @@
 #import <QuartzCore/QuartzCore.h>
 #import <UIKit/UIKit.h>
 
-// Playback fix — handles "Something went wrong" PoToken/integrity stalls.
+// Playback fix -- handles "Something went wrong" PoToken/integrity stalls.
 // Strategy: on sideload stall (code 14/0) do a stall-aware retry with seek
 // coalescing.  Also shields the player during rapid scrubbing (your
 // circular-retry screenshot) by debouncing seek storms.
@@ -38,7 +38,7 @@ static double QTCurrentVideoMediaTime(id self, SEL _cmd) {
 }
 static void QTSeekToTime(id self, SEL _cmd, double t) {
     NSTimeInterval now = CACurrentMediaTime();
-    // Seek storm detection — but never hide the latest position from recovery.
+    // Seek storm detection -- but never hide the latest position from recovery.
     // Always update QTLatestTime so a later retry seeks to where the user ended.
     QTLatestTime = t;
     if (now - QTLastSeekTime < 0.22) {
@@ -163,7 +163,7 @@ static NSInteger QTErrorCodeForRetry(NSError *err) {
     return -1;
 }
 static void QTHandleError(id self, SEL _cmd, id error) {
-    // Detailed pipeline input logging — code/domain/userInfo keys, underlying error, and handleError call site
+    // Detailed pipeline input logging -- code/domain/userInfo keys, underlying error, and handleError call site
     @try {
         if ([error isKindOfClass:NSError.class]) {
             NSError *e = (NSError*)error;
@@ -187,7 +187,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
         QTCallOriginalHandleError(self,_cmd,error);
         return;
     }
-    // If WEB mode is already on, do NOT reload-loop — WEB should not produce code 14.
+    // If WEB mode is already on, do NOT reload-loop -- WEB should not produce code 14.
     // If it still does, log heavily and only nudge once, then stop retrying.
     if ([[NSUserDefaults standardUserDefaults] boolForKey:@"QuietTube.v1.useWebClient"]) {
         if (QTDEnabled()) QTDEvent(QTDEPlaybackError, @{@"code":@(err.code), @"domain":@1, @"depth":@99, @"result":@"web_mode_stall_unexpected"});
@@ -253,7 +253,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
                             double cur = QTPosition(pvc);
                             if (cur <= saved + 0.05) {
                                 QTFixEmergencyRetried++;
-                                // Persistent failure — transient WEB arm + nudge (once)
+                                // Persistent failure -- transient WEB arm + nudge (once)
                                 QTStreamFallbackHandleError(self, err, saved);
                                 if (QTFixConsecutiveStalls >= 3) QTShowWebPlayerNudge();
                                 // Break loop: only one emergency reload per stall burst.
@@ -280,7 +280,7 @@ static void QTHandleError(id self, SEL _cmd, id error) {
 }
 
 void QTInstallPlaybackFix(void) {
-    // Install early — before YTMainAppVideoPlayerOverlayViewController is instantiated.
+    // Install early -- before YTMainAppVideoPlayerOverlayViewController is instantiated.
     Class pvc = NSClassFromString(@"YTPlayerViewController");
     if (pvc) {
         Method m = class_getInstanceMethod(pvc, NSSelectorFromString(@"currentVideoMediaTime"));

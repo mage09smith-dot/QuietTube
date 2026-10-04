@@ -32,7 +32,7 @@ static void QTIntMiss(NSString *cls, NSString *sel) {
     QTIntMissCount++;
 }
 
-// sideload detection — receipt + bundleID both
+// sideload detection -- receipt + bundleID both
 static BOOL QTIntSideloadedCheck(void) {
     if (![NSBundle.mainBundle.bundleIdentifier containsString:@"youtube"] &&
         ![NSBundle.mainBundle.bundleIdentifier isEqualToString:QTYTBundleID]) {
@@ -149,7 +149,7 @@ static NSString *QTAppID(id self, SEL _cmd) { return QTYTBundleID; }
 static BOOL QTTrue(id self, SEL _cmd) { return YES; }
 static BOOL QTFalse(id self, SEL _cmd) { return NO; }
 
-// Access group — CRASH FIX: must not deadlock or double-free on launch.
+// Access group -- CRASH FIX: must not deadlock or double-free on launch.
 // dispatch_once inside constructor is safe, but SecItemAdd may call back into bundle hooks.
 // Guard against re-entrancy and nil bridging.
 static NSString *QTCurrentAccessGroup(void) {
@@ -323,7 +323,7 @@ static void QTSpoof_DCAppAttestService(Class cls) {
 // ASDeviceCheck / Apple Private?
 static void QTSpoof_BotGuardAndPoToken(void) {
     // Hunt all classes containing BotGuard, PoToken, Attest, Integrity, Visitor
-    // CRASH FIX: previously overwrote mcount and leaked — caused OOB read at launch.
+    // CRASH FIX: previously overwrote mcount and leaked -- caused OOB read at launch.
     unsigned int count = 0;
     Class *list = objc_copyClassList(&count);
     for (unsigned int i=0;i<count;i++) {
@@ -379,7 +379,7 @@ static void QTSpoof_BotGuardAndPoToken(void) {
     }
 
     // Aggressive PoToken hook: signature-aware.
-    // We must not guess block arity — use method_getTypeEncoding to decide.
+    // We must not guess block arity -- use method_getTypeEncoding to decide.
     // For methods with completionHandler: we detect it and call with (token,nil).
     NSArray *poSelectors = @[@"generatePoTokenWithCompletionHandler:", @"generatePoToken:", @"mintPoToken:", @"mintPoTokenWithCompletionHandler:", @"fetchPoToken:", @"requestPoToken:", @"generateAttestationWithCompletionHandler:", @"generateIntegrityTokenWithCompletionHandler:"];
     for (NSString *selStr in poSelectors) {
@@ -399,7 +399,7 @@ static void QTSpoof_BotGuardAndPoToken(void) {
             unsigned int argCount = method_getNumberOfArguments(m);
             IMP fake = NULL;
             if (hasCompletion && argCount >= 3) {
-                // -foo:(id)completion:(block) — block is last arg
+                // -foo:(id)completion:(block) -- block is last arg
                 if (argCount==3) {
                     fake = imp_implementationWithBlock(^void(id self, id handler){
                         if (!handler) return;
@@ -431,7 +431,7 @@ static void QTSpoof_BotGuardAndPoToken(void) {
                     });
                 }
             } else {
-                // no completion — return fake token directly
+                // no completion -- return fake token directly
                 if (retType=='@') {
                     fake = imp_implementationWithBlock(^id(id self){
                         QTIntTrace([NSString stringWithFormat:@"integrity: spoofed %@ -%@", NSStringFromClass(cl[idx]), selStr]);
@@ -484,7 +484,7 @@ static void QTInstallNetworkSpoof(void) {
         Class cls = NSClassFromString(@"NSURLSession");
         if (!cls) return;
         // NSURLSession hooks can crash if installed inside constructor before class is realized.
-        // Defer to next runloop — by then NSURLSession is fully realized and safe to swizzle.
+        // Defer to next runloop -- by then NSURLSession is fully realized and safe to swizzle.
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
                 {
@@ -547,7 +547,7 @@ static void QTInstallNetworkSpoof(void) {
 }
 
 void QTIntegrityEarlyBundleSpoof(void) {
-    // Called synchronously at constructor time — must be crash-proof and minimal.
+    // Called synchronously at constructor time -- must be crash-proof and minimal.
     @try {
         Class c = NSClassFromString(@"NSBundle");
         if (!c) return;
@@ -561,7 +561,7 @@ void QTIntegrityEarlyBundleSpoof(void) {
 // ============ main installer ============
 void QTInstallIntegrity(void) {
     @try { if (!QTIntLog) QTIntLog = [NSMutableArray array]; } @catch (__unused NSException *e) { QTIntLog = nil; }
-    // QTCurrentAccessGroup() intentionally NOT called here — deferred to first keychain use.
+    // QTCurrentAccessGroup() intentionally NOT called here -- deferred to first keychain use.
 
     // 2. UIApplication setDelegate shim
     {
@@ -571,7 +571,7 @@ void QTInstallIntegrity(void) {
         else QTHook(@"UIApplication", @"setDelegate:", @"v@", ^id(IMP old, SEL s){ OrigSetDelegate=old; return ^(id o, id d){ QTSetDelegate(o,s,d); }; });
         QTIntInstalled(@"UIApplication", @"setDelegate:");
     }
-    // 3. NSBundle spoof — bundleIdentifier already done in EarlyBundleSpoof, just do the rest.
+    // 3. NSBundle spoof -- bundleIdentifier already done in EarlyBundleSpoof, just do the rest.
     {
         // Check if already swizzled by early path
         Class c = NSClassFromString(@"NSBundle");
@@ -617,7 +617,7 @@ void QTInstallIntegrity(void) {
         if (m) { OrigFASIsFAS = method_getImplementation(m); method_setImplementation(m, (IMP)QTTrue); QTIntInstalled(@"APMAEU", @"isFAS"); }
         else QTHook(@"APMAEU", @"isFAS", @"B", ^id(IMP o, SEL s){ return ^BOOL(id x){ return YES; }; });
     }
-    // 6. SSO — also fix GoogleSignIn trust: must report real bundle + real teamID so
+    // 6. SSO -- also fix GoogleSignIn trust: must report real bundle + real teamID so
     // Google's token endpoint trusts the sideloaded app as first-party.
     {
         Class c = NSClassFromString(@"SSOConfiguration");
@@ -633,11 +633,11 @@ void QTInstallIntegrity(void) {
             // GoogleSignIn: force hosted auth flow to use the real YouTube bundle scope
             Method m5 = class_getInstanceMethod(c, NSSelectorFromString(@"clientID"));
             if (m5) {
-                // No need to swizzle — SSOInit already sets _applicationIdentifier
+                // No need to swizzle -- SSOInit already sets _applicationIdentifier
                 QTIntTrace(@"integrity: SSOConfiguration clientID present");
             }
         }
-        // GIDSignIn — the "unverified app" screen is driven by Google's server seeing a
+        // GIDSignIn -- the "unverified app" screen is driven by Google's server seeing a
         // sideloaded bundle + wrong keychain group.  Bundle is already spoofed early,
         // but the keychain group must be valid at sign-in time and hostedDomain/client
         // must round-trip correctly.  Also add AppCheck bypass for sideload.
@@ -656,9 +656,9 @@ void QTInstallIntegrity(void) {
                 }
             }
             // Spoof GIDConfiguration.clientID init to inject GoogleService-Info clientID if missing
-            // No hard swizzle needed — SSOInit already sets _applicationIdentifier
+            // No hard swizzle needed -- SSOInit already sets _applicationIdentifier
         }
-        // AppCheck / GTM — bypass check that fails on sideload and blocks token mint.
+        // AppCheck / GTM -- bypass check that fails on sideload and blocks token mint.
         // Must match ALL spellings: getTokenWithCompletion:, getTokenForcingRefresh:completion:, etc.
         for (NSString *ckName in @[@"GULAppCheckProvider", @"FIRAppCheck", @"GTMAppCheckToken", @"GULSecureStorage", @"FIRAppCheckTokenResult", @"GACAppCheckProvider"]) {
             Class ck = NSClassFromString(ckName);
@@ -704,7 +704,7 @@ void QTInstallIntegrity(void) {
             }
         }
     }
-    // 7. Keychain — must be valid BEFORE first sign-in.  Also spoof GIDKeychain
+    // 7. Keychain -- must be valid BEFORE first sign-in.  Also spoof GIDKeychain
     // so Google's keychain read sees the same group and the session survives reinstall.
     for (NSString *n in @[@"SSOKeychainHelper", @"SSOKeychainCore", @"GIDKeychain", @"GTMKeychain", @"GTMOAuth2Keychain"]) {
         Class c = NSClassFromString(n);
@@ -753,7 +753,7 @@ void QTInstallIntegrity(void) {
             else QTIntMiss(@"DCAppAttestService", @"*");
         }
     }
-    // 11. BotGuard / PoToken / Integrity generic — deferred to next runloop so all YT classes are realized
+    // 11. BotGuard / PoToken / Integrity generic -- deferred to next runloop so all YT classes are realized
     // and to avoid heavy objc_copyClassList inside constructor (can deadlock dyld).
     dispatch_async(dispatch_get_main_queue(), ^{
         @try { QTSpoof_BotGuardAndPoToken(); } @catch (__unused NSException *e) {}
@@ -762,7 +762,7 @@ void QTInstallIntegrity(void) {
     // 12. Network header spoof (already deferred internally)
     QTInstallNetworkSpoof();
 
-    // 13. Receipt spoof — deferred: appStoreReceiptURL may be called on background thread.
+    // 13. Receipt spoof -- deferred: appStoreReceiptURL may be called on background thread.
     // Creating a file synchronously inside constructor can deadlock. Only swizzle, create lazily.
     {
         Class c = NSClassFromString(@"NSBundle");

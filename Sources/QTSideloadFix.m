@@ -137,7 +137,7 @@ static void QTSetDelegate(id self, SEL _cmd, id del) {
 }
 
 void QTInstallSideloadFix(void) {
-    // Avoid QTDEnabled() before QTDConfigure — constructor ordering.
+    // Avoid QTDEnabled() before QTDConfigure -- constructor ordering.
     BOOL sideloaded = QTIsSideloadedCheck();
 
     // accessGroup must be primed early for SSO
@@ -151,7 +151,7 @@ void QTInstallSideloadFix(void) {
         // use QTHook for safety where possible, but direct replace for UIApplication which may not be loaded yet
         if (c && m) method_setImplementation(m, (IMP)QTSetDelegate);
         else {
-            // fallback via QTHook if class not yet present — will retry via QTHook path
+            // fallback via QTHook if class not yet present -- will retry via QTHook path
             QTHook(@"UIApplication", @"setDelegate:", @"v@", ^id(IMP old, SEL sel){
                 OrigSetDelegate = old;
                 return ^(id obj, id del){ QTSetDelegate(obj, sel, del); };
@@ -217,7 +217,7 @@ void QTInstallSideloadFix(void) {
         else QTHook(@"APMAEU", @"isFAS", @"B", ^id(IMP old, SEL s){ return ^BOOL(id o){ return YES; }; });
     }
 
-    // SSO — needed for Google sign-in on sideloaded bundle
+    // SSO -- needed for Google sign-in on sideloaded bundle
     {
         Class c = NSClassFromString(@"SSOConfiguration");
         if (c) {

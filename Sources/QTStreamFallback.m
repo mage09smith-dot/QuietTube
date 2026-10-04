@@ -7,11 +7,11 @@
 #import <QuartzCore/QuartzCore.h>
 #import <Foundation/Foundation.h>
 
-// QTStreamFallback — PoToken/code-14 bypass.
+// QTStreamFallback -- PoToken/code-14 bypass.
 // Two modes:
 //   A) Transient fallback (default): after 2 stalls in a row, arm a 30s TVHTML5 rewrite.
 //   B) Persistent WEB client (opt-in via Quiet Controls): every InnerTube request is WEB,
-//      so PoToken is never required.  Mirrors what web+uBlock does — WEB client has
+//      so PoToken is never required.  Mirrors what web+uBlock does -- WEB client has
 //      no PoToken gate.  This is the proper fix for "every 60s" stalls.
 
 static NSUInteger QTFallbackAttempts, QTFallbackSuccesses, QTFallbackRewrites;
@@ -31,7 +31,7 @@ void QTStreamFallbackSetUseWebClient(BOOL useWeb) {
     QTFallbackUseWebClient = useWeb;
     // Canonical key is QTPrefix+useWebClient; also mirror legacy for readers.
     [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:@"QuietTube.v1.useWebClient"];
-    // QTCore will mirror to canonical on next launch — also set directly here
+    // QTCore will mirror to canonical on next launch -- also set directly here
     [[NSUserDefaults standardUserDefaults] setBool:useWeb forKey:QTWebClientKeyLegacy];
     if (useWeb) { QTFallbackArmed = YES; QTFallbackArmUntil = [NSDate date].timeIntervalSince1970 + 3600*24*365; }
     else { QTFallbackArmed = NO; }
@@ -79,7 +79,7 @@ static NSData *QTRewriteInnertubeBody(NSData *body) {
         // Persistent WEB mode: always rewrite IOS/IOS_C, but leave WEB/TV alone if already correct
         if ([origName isEqualToString:@"WEB"] || [origName isEqualToString:@"TVHTML5"]) return nil;
         if (![origName isEqualToString:@"IOS"] && ![origName isEqualToString:@"IOS_C"]) {
-            // Unknown client (ANDROID etc) — rewrite to WEB anyway for consistency
+            // Unknown client (ANDROID etc) -- rewrite to WEB anyway for consistency
         }
     }
     NSDictionary *fallback = QTFallbackClientContext();
@@ -111,12 +111,12 @@ static void QTInstallBodyRewrite(void) {
     @try {
         Class cls = NSClassFromString(@"NSURLSession");
         if (!cls) return;
-        // Defer swizzle to next runloop — same reason as QTIntegrity network spoof.
+        // Defer swizzle to next runloop -- same reason as QTIntegrity network spoof.
         // Also avoid double-hooking the same selector already hooked by QTIntegrity.
         dispatch_async(dispatch_get_main_queue(), ^{
             @try {
                 // Only hook uploadTask if QTIntegrity hasn't already taken the Orig slot.
-                // We use a separate Orig var, so we can co-exist — just check m still exists.
+                // We use a separate Orig var, so we can co-exist -- just check m still exists.
                 SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
                 Method m = class_getInstanceMethod(cls, sel);
                 if (m) {

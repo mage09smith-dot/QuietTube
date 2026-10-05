@@ -3,7 +3,7 @@
   "sha256": {
     ".gitattributes": "1e909dcd57d435627af3f46aeddc5ce31396c7a4b9ed7292fb25587989a3f6c9",
     ".github/ISSUE_TEMPLATE/bug.md": "e5de77f50641011e23dfb5adac054536a2345f143538501fa2227d389736a8df",
-    ".github/workflows/build.yml": "56f89194ce24fa75ef1c4c94023a62bf3f0f111c70f2743e1a383136eb62c6a3",
+    ".github/workflows/build.yml": "b5760a8f0537be2f49b4a2f8376590f5cc30682a365b7e11d3b8c0bca05e3945",
     ".github/workflows/checks.yml": "ec4485a226e64b1e634e62f7a3ebbf9c063107381a01e947e83371e3ad6eca69",
     ".github/workflows/dylib.yml": "e12949ee3acd14a058af7fe71e45482c916007731e9c8a514678aed436e8117a",
     "CHANGELOG.md": "ad50239ee502338d2690b4d3b58a2b923c53f04eb9452443c92f76ff31f30f3b",

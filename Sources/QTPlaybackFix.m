@@ -220,11 +220,11 @@ static void QTHandleError(id self, SEL _cmd, id error) {
     QTFixConsecutiveStalls++;
     QTFixLastStallAt = CACurrentMediaTime();
     QTRetryCount++;
+    double saved = QTLatestTime;
     if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"retry_start saved=%.2f stall#%lu", saved, (unsigned long)QTFixConsecutiveStalls]});
 
     SEL pg = NSSelectorFromString(@"parentViewController");
     id pvc = [self respondsToSelector:pg] ? ((id(*)(id,SEL))objc_msgSend)(self, pg) : nil;
-    double saved = QTLatestTime;
 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         double moved = QTPosition(pvc);

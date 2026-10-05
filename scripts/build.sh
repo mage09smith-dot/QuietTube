@@ -10,10 +10,6 @@ xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk" \
   -install_name '@rpath/QuietTube.dylib' \
   -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore -framework AVFoundation -framework CoreMedia -framework Security \
   Sources/QTCore.m Sources/QTDiagnosticLog.m Sources/QTDiagnosticsBridge.m Sources/QTPreferences.m Sources/QTSettings.m Sources/QTSettingsModel.m Sources/QTFeatures.m Sources/QTLogo.m Sources/QTAdProfile.m Sources/QTMutationTrace.m Sources/QTFeedInsertion.m Sources/QTSponsorSkip.m Sources/QTSideloadFix.m Sources/QTPlaybackFix.m Sources/QTIntegrity.m Sources/QTSponsorEngine.m Sources/QTStreamFallback.m \
-  -o artifacts/QuietTube.dylib || {
-    echo "::warning::clang failed (exp.37 Fable pending) - creating stub dylib so workflow can continue"
-    mkdir -p artifacts
-    echo 'int qt_stub=0;' | xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk" -miphoneos-version-min=17.0 -dynamiclib -fobjc-arc -o artifacts/QuietTube.dylib -x c - 2>/dev/null || touch artifacts/QuietTube.dylib
-  }
-codesign --force --sign - artifacts/QuietTube.dylib 2>/dev/null || echo "::warning::codesign failed, continuing"
-file artifacts/QuietTube.dylib 2>/dev/null || ls -lh artifacts/
+  -o artifacts/QuietTube.dylib
+codesign --force --sign - artifacts/QuietTube.dylib
+file artifacts/QuietTube.dylib

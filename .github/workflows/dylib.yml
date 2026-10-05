@@ -33,7 +33,7 @@ jobs:
       - name: Verify sources and run regression tests
         run: bash scripts/check.sh || echo "checks bypassed for exp.37 - Fable pending"
       - name: Compile the native tweak
-        run: bash scripts/build.sh || echo "build bypassed for exp.37 - Fable pending"
+        run: bash scripts/build.sh
       - name: Publish standalone dylib and show download link
         env:
           GH_TOKEN: ${{ github.token }}

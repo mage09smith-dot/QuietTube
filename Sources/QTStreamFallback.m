@@ -107,75 +107,215 @@ static BOOL QTFallbackIsArmed(void) {
     return YES;
 }
 
-static void QTInstallBodyRewrite(void) {
+
+static IMP QTStreamFallbackOrigUploadTask = NULL;
+static IMP QTStreamFallbackOrigDataTaskCB = NULL;
+static IMP QTStreamFallbackOrigDataTask = NULL;
+static BOOL QTStreamFallbackHookedUpload = NO;
+static BOOL QTStreamFallbackHookedDataCB = NO;
+static BOOL QTStreamFallbackHookedData = NO;
+
+// Helper to try rewrite from NSData or HTTPBody
+static BOOL QTStreamFallbackTryRewrite(NSURLRequest *req, NSData *body, NSMutableURLRequest **outReq, NSData **outBody, NSString **outOrigClient) {
+    NSMutableURLRequest *mutable = nil;
+    NSData *newBody = nil;
+    NSString *origClient = nil;
+    BOOL didRewrite = NO;
+    @try {
+        if (!QTFallbackIsArmed() || !req || !req.URL.absoluteString || ![req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) return NO;
+        NSString *url = req.URL.absoluteString;
+        if (![url containsString:@"/player"] && ![url containsString:@"/next"] && ![url containsString:@"/browse"]) return NO;
+        NSData *srcBody = body;
+        if (!srcBody) srcBody = req.HTTPBody;
+        // Try HTTPBodyStream if HTTPBody nil (rare)
+        if (!srcBody && req.HTTPBodyStream) {
+            @try {
+                NSInputStream *s = req.HTTPBodyStream;
+                if (s.streamStatus == NSStreamStatusNotOpen) [s open];
+                NSMutableData *d = [NSMutableData data];
+                uint8_t buf[4096];
+                while (s.hasBytesAvailable) {
+                    NSInteger r = [s read:buf maxLength:sizeof(buf)];
+                    if (r <= 0) break;
+                    [d appendBytes:buf length:r];
+                    if (d.length > 512*1024) break;
+                }
+                if (d.length) srcBody = d;
+                if (s.streamStatus != NSStreamStatusClosed) [s close];
+            } @catch (__unused NSException *e) {}
+        }
+        if (!srcBody) {
+            // No body to rewrite - still log player_req for visibility
+            if (QTDEnabled() && [url containsString:@"/player"]) {
+                NSString *mode = QTFallbackUseWebClient?@"WEB":@"transient";
+                QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"player_req mode=%@ orig=? rewrote=no-body", mode]});
+            }
+            return NO;
+        }
+        @try {
+            id j0 = [NSJSONSerialization JSONObjectWithData:srcBody options:0 error:nil];
+            if ([j0 isKindOfClass:NSDictionary.class]) origClient = j0[@"context"][@"client"][@"clientName"];
+        } @catch (__unused NSException *e) {}
+        NSData *rewritten = QTRewriteInnertubeBody(srcBody);
+        if (rewritten) {
+            if (body) {
+                newBody = rewritten;
+            } else {
+                mutable = [req mutableCopy];
+                mutable.HTTPBody = rewritten;
+            }
+            didRewrite = YES;
+            @try { QTCount(@"streamFallback: rewrote InnerTube body to WEB"); } @catch(__unused NSException *e){}
+            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description": @"fallback_rewrite_WEB", @"ad":@(1), @"scope":@(QTFallbackUseWebClient?1:0)});
+        }
+        if (QTDEnabled() && [url containsString:@"/player"]) {
+            NSString *mode = QTFallbackUseWebClient?@"WEB":@"transient";
+            QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"player_req mode=%@ orig=%@ rewrote=%@", mode, origClient?:@"?", didRewrite?@"yes":@"no"]});
+        }
+        if (outOrigClient) *outOrigClient = origClient;
+        if (didRewrite) {
+            if (outReq) *outReq = mutable;
+            if (outBody) *outBody = newBody;
+        }
+        return didRewrite;
+    } @catch (__unused NSException *e) { return NO; }
+}
+
+static void QTInstallBodyRewriteOnce(void) {
     @try {
         Class cls = NSClassFromString(@"NSURLSession");
         if (!cls) return;
-        // Defer swizzle to next runloop -- same reason as QTIntegrity network spoof.
-        // Also avoid double-hooking the same selector already hooked by QTIntegrity.
-        dispatch_async(dispatch_get_main_queue(), ^{
-            @try {
-                // Only hook uploadTask if QTIntegrity hasn't already taken the Orig slot.
-                // We use a separate Orig var, so we can co-exist -- just check m still exists.
-                SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
-                Method m = class_getInstanceMethod(cls, sel);
-                if (m) {
-                    IMP current = method_getImplementation(m);
-                    if (current != (IMP)QTInstallBodyRewrite) {
-                        OrigUploadTaskBody = current;
+        // 1) uploadTaskWithRequest:fromData:completionHandler:
+        {
+            SEL sel = NSSelectorFromString(@"uploadTaskWithRequest:fromData:completionHandler:");
+            Method m = class_getInstanceMethod(cls, sel);
+            if (m) {
+                IMP cur = method_getImplementation(m);
+                // If already our hook, skip
+                BOOL isOurHook = (QTStreamFallbackHookedUpload && cur != QTStreamFallbackOrigUploadTask);
+                // We need to detect if cur is our previous rep; we store rep globally to compare - simpler: just check flag and if cur already hooked we re-wrap if needed
+                if (!QTStreamFallbackHookedUpload || cur != (IMP)QTInstallBodyRewriteOnce) {
+                    // Capture current as orig if not already captured or if someone overwrote us
+                    if (!QTStreamFallbackHookedUpload) {
+                        QTStreamFallbackOrigUploadTask = cur;
+                    } else if (cur != QTStreamFallbackOrigUploadTask) {
+                        // Someone else (QTIntegrity) overwrote us - re-capture
+                        QTStreamFallbackOrigUploadTask = cur;
+                    } else {
+                        // Already hooked and no overwrite
+                    }
+                    if (!QTStreamFallbackHookedUpload || cur != method_getImplementation(m)) {
+                        // Actually install if not yet or overwrote
+                    }
+                    // Only install if not already our implementation
+                    // check by comparing cur to our last rep - we don't have rep stored, so we use a static
+                    static IMP lastRep = NULL;
+                    if (cur == lastRep) {
+                        // already installed
+                    } else {
                         IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, NSData *body, id handler){
                             NSMutableURLRequest *mutable = nil;
                             NSData *newBody = nil;
-                            BOOL didRewrite = NO;
-                            NSString *origClient = nil;
                             @try {
-                                if (QTFallbackIsArmed() && body && req.URL.absoluteString && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) {
-                                    NSString *url = req.URL.absoluteString;
-                                    if ([url containsString:@"/player"] || [url containsString:@"/next"] || [url containsString:@"/browse"]) {
-                                        // Peek original client for logging
-                                        @try {
-                                            id j0 = [NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
-                                            if ([j0 isKindOfClass:NSDictionary.class]) origClient = j0[@"context"][@"client"][@"clientName"];
-                                        } @catch(__unused NSException *e){}
-                                        NSData *rewritten = QTRewriteInnertubeBody(body);
-                                        if (rewritten) {
-                                            mutable = [req mutableCopy];
-                                            newBody = rewritten;
-                                            didRewrite = YES;
-                                            @try { QTCount(@"streamFallback: rewrote InnerTube body to WEB"); } @catch(__unused NSException *e){}
-                                            if (QTDEnabled()) QTDEvent(QTDEPlayer, @{@"phase":@3, @"description": didRewrite?@"fallback_rewrite_WEB":@"fallback_rewrite", @"ad":@(didRewrite), @"scope":@(QTFallbackUseWebClient?1:0)});
-                                        }
-                                    }
+                                NSMutableURLRequest *mr = nil;
+                                NSData *nb = nil;
+                                if (QTStreamFallbackTryRewrite(req, body, &mr, &nb, NULL)) {
+                                    if (mr) mutable = mr;
+                                    if (nb) newBody = nb;
                                 }
                             } @catch (__unused NSException *e) {}
-                            // Detailed request logging when WEB mode is on (helps prove replacement)
-                            @try {
-                                if (QTDEnabled() && body && req.URL.absoluteString && [req.URL.absoluteString containsString:@"youtubei.googleapis.com"] && [req.URL.absoluteString containsString:@"/player"]) {
-                                    NSString *mode = QTFallbackUseWebClient?@"WEB":@"transient";
-                                    QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"player_req mode=%@ orig=%@ rewrote=%@", mode, origClient?:@"?", didRewrite?@"yes":@"no"]});
-                                }
-                            } @catch(__unused NSException *e){}
                             NSURLRequest *useReq = mutable ?: req;
                             NSData *useBody = newBody ?: body;
-                            if (OrigUploadTaskBody) return ((id(*)(id,SEL,id,id,id))OrigUploadTaskBody)(self, sel, useReq, useBody, handler);
+                            if (QTStreamFallbackOrigUploadTask) return ((id(*)(id,SEL,id,id,id))QTStreamFallbackOrigUploadTask)(self, sel, useReq, useBody, handler);
                             return (id)nil;
                         });
+                        lastRep = rep;
                         method_setImplementation(m, rep);
+                        QTStreamFallbackHookedUpload = YES;
                         @try { QTCount(@"streamFallback: hooked uploadTaskWithRequest:fromData:completionHandler:"); } @catch(__unused NSException *e){}
                     }
                 }
-                // Also hook dataTaskWithRequest:completionHandler: for GET player fallback
-                SEL sel2 = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
-                Method m2 = class_getInstanceMethod(cls, sel2);
-                if (m2) {
-                    OrigDataTaskCB = method_getImplementation(m2);
+            }
+        }
+        // 2) dataTaskWithRequest:completionHandler:
+        {
+            SEL sel = NSSelectorFromString(@"dataTaskWithRequest:completionHandler:");
+            Method m = class_getInstanceMethod(cls, sel);
+            if (m) {
+                IMP cur = method_getImplementation(m);
+                static IMP lastRep2 = NULL;
+                if (cur != lastRep2) {
+                    if (!QTStreamFallbackHookedDataCB) QTStreamFallbackOrigDataTaskCB = cur;
+                    else if (cur != QTStreamFallbackOrigDataTaskCB && cur != lastRep2) QTStreamFallbackOrigDataTaskCB = cur;
+                    IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req, id handler){
+                        NSMutableURLRequest *mutable = nil;
+                        @try {
+                            NSMutableURLRequest *mr = nil;
+                            if (QTStreamFallbackTryRewrite(req, nil, &mr, NULL, NULL)) {
+                                mutable = mr;
+                            }
+                        } @catch (__unused NSException *e) {}
+                        NSURLRequest *useReq = mutable ?: req;
+                        if (QTStreamFallbackOrigDataTaskCB) return ((id(*)(id,SEL,id,id))QTStreamFallbackOrigDataTaskCB)(self, sel, useReq, handler);
+                        return (id)nil;
+                    });
+                    lastRep2 = rep;
+                    method_setImplementation(m, rep);
+                    QTStreamFallbackHookedDataCB = YES;
+                    @try { QTCount(@"streamFallback: hooked dataTaskWithRequest:completionHandler:"); } @catch(__unused NSException *e){}
                     @try { QTCount(@"streamFallback: dataTask hook available"); } @catch(__unused NSException *e){}
                 }
-            } @catch (__unused NSException *e) {}
-        });
+            } else {
+                @try { QTCount(@"streamFallback: dataTask hook available"); } @catch(__unused NSException *e){}
+            }
+        }
+        // 3) dataTaskWithRequest: (no completion)
+        {
+            SEL sel = NSSelectorFromString(@"dataTaskWithRequest:");
+            Method m = class_getInstanceMethod(cls, sel);
+            if (m) {
+                IMP cur = method_getImplementation(m);
+                static IMP lastRep3 = NULL;
+                if (cur != lastRep3) {
+                    if (!QTStreamFallbackHookedData) QTStreamFallbackOrigDataTask = cur;
+                    else if (cur != QTStreamFallbackOrigDataTask && cur != lastRep3) QTStreamFallbackOrigDataTask = cur;
+                    IMP rep = imp_implementationWithBlock(^id(id self, NSURLRequest *req){
+                        NSMutableURLRequest *mutable = nil;
+                        @try {
+                            NSMutableURLRequest *mr = nil;
+                            if (QTStreamFallbackTryRewrite(req, nil, &mr, NULL, NULL)) mutable = mr;
+                        } @catch (__unused NSException *e) {}
+                        NSURLRequest *useReq = mutable ?: req;
+                        if (QTStreamFallbackOrigDataTask) return ((id(*)(id,SEL,id))QTStreamFallbackOrigDataTask)(self, sel, useReq);
+                        return (id)nil;
+                    });
+                    lastRep3 = rep;
+                    method_setImplementation(m, rep);
+                    QTStreamFallbackHookedData = YES;
+                    @try { QTCount(@"streamFallback: hooked dataTaskWithRequest:"); } @catch(__unused NSException *e){}
+                }
+            }
+        }
         @try { QTCount(@"streamFallback: InnerTube body rewrite scheduled"); } @catch(__unused NSException *e){}
+        // Schedule re-check for race with QTIntegrity (which also dispatches async)
+        static BOOL scheduledRecheck = NO;
+        if (!scheduledRecheck) {
+            scheduledRecheck = YES;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.8*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                @try { QTInstallBodyRewriteOnce(); } @catch(__unused NSException *e){}
+            });
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.5*NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                @try { QTInstallBodyRewriteOnce(); } @catch(__unused NSException *e){}
+            });
+        }
     } @catch (__unused NSException *e) {}
 }
+
+static void QTInstallBodyRewrite(void) {
+    // Synchronous install (no extra dispatch) -- QTCore already on main queue
+    QTInstallBodyRewriteOnce();
+}
+
 
 void QTInstallStreamFallback(void) {
     if (QTFallbackInstalled) return;

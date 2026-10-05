@@ -114,8 +114,14 @@ static IMP QTStreamFallbackOrigData = NULL;
 
 static BOOL QTStreamFallbackTryRewrite(NSURLRequest *req, NSData *body, NSMutableURLRequest **outReq, NSData **outBody) {
     @try {
-        if (!QTFallbackIsArmed() || !req || !req.URL.absoluteString || ![req.URL.absoluteString containsString:@"youtubei.googleapis.com"]) return NO;
+        if (!QTFallbackIsArmed() || !req || !req.URL.absoluteString || ![req.URL.absoluteString containsString:@"youtubei"]) return NO;
         NSString *url = req.URL.absoluteString;
+        // Log every youtubei request for debugging (proves hook hit)
+        @try {
+            if (QTDEnabled() && [url containsString:@"youtubei"]) {
+                QTDEvent(QTDEPlayer, @{@"phase":@3, @"description":[NSString stringWithFormat:@"yt_req url=%@", url]});
+            }
+        } @catch (__unused NSException *ex) {}
         if (![url containsString:@"/player"] && ![url containsString:@"/next"] && ![url containsString:@"/browse"]) return NO;
         NSData *srcBody = body;
         if (!srcBody) srcBody = req.HTTPBody;

@@ -1,7 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="192" height="192" viewBox="0 0 192 192" role="img" aria-labelledby="title desc">
-  <title id="title">QuietTube project mark</title>
-  <desc id="desc">A charcoal Q and an offset vermilion rule on warm paper. An optional repository mark, not a replacement YouTube app icon.</desc>
+  <title id="title">QuietTube mark</title>
+  <desc id="desc">Geometric Q — charcoal block with paper cutout and vermilion dot. Flat, hard edges. Not an app icon.</desc>
   <rect width="192" height="192" fill="#F1EBDD"/>
-  <text x="22" y="146" fill="#20201E" font-family="Arial, Helvetica, Liberation Sans, sans-serif" font-size="142" font-weight="700">Q</text>
-  <rect x="143" y="38" width="10" height="90" fill="#C64936"/>
+  <rect x="0" y="0" width="192" height="8" fill="#20201E"/>
+  <rect x="0" y="184" width="192" height="8" fill="#C64936"/>
+  <rect x="0" y="8" width="8" height="176" fill="#C64936"/>
+  <rect x="32" y="36" width="88" height="88" fill="#20201E"/>
+  <rect x="58" y="62" width="36" height="36" fill="#F1EBDD"/>
+  <rect x="94" y="98" width="14" height="14" fill="#C64936"/>
 </svg>

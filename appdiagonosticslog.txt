@@ -1,0 +1,763 @@
+QuietTube 1.2.0 Ad profile and bounded troubleshooting
+YouTube 21.38.2
+iOS 26.5
+
+Installed does NOT mean device-tested. Unavailable hooks are not active.
+
+QUIETTUBE 1.3.0-exp.34 AD TEST REPORT
+Profile requested this launch: on
+Installation state: SESSION SAFETY PAUSE - saved settings unchanged; restart to retry
+Saved for next launch: on
+Ad profile enables player and scoped feed insertion; feed also requires feedAds. Old branch preferences are ignored.
+Player hook installed: yes; feed hooks installed: yes
+Player invocation: 4 calls; 4 native no-op objects supplied.
+Installation/invocation does not prove ad removal. Session safety pause does not change saved preferences. Restart retries saved choices; existing players are not repaired.
+
+SESSION SAFETY PAUSE: native behavior for future calls; saved preferences unchanged; restart to retry : 1
+native no-op coordinator supplied : 4
+player factory called : 4
+player factory hook installed : 1
+
+Last 17 events (older discarded: 0)
++0.0s player factory hook installed
++1.7s player factory called
++1.7s native no-op coordinator supplied
++2.0s player factory called
++2.0s native no-op coordinator supplied
++4.7s player factory called
++4.7s native no-op coordinator supplied
++5.3s player factory called
++5.3s native no-op coordinator supplied
++23.2s SESSION SAFETY PAUSE: native behavior for future calls; saved preferences unchanged; restart to retry
++23.2s error depth 0 YouTube code 14
++41.2s error depth 0 YouTube code 14
++57.1s error depth 0 YouTube code 14
++73.6s error depth 0 YouTube code 14
++76.9s error depth 0 YouTube code 14
++80.5s error depth 0 YouTube code 14
++92.7s error depth 0 YouTube code 14
+
+SCOPED FEED INSERTION FILTER
+Handler hook installed: yes; array-boundary hook installed: yes
+Requested active now: no (ad profile, safety latch and feedAds)
+Retired companion hook: not installed.
+Handler calls: 1; scoped array calls: 0
+Explicit-marked entries matched: 0
+Filtered native array calls returned: 0
+Entries withheld on returned calls: 0; unmarked entries forwarded in those calls: 0
+Preparation fallbacks: 0; oversized batches passed through: 0
+FEED BLOCKING NOT DEMONSTRATED: no entries withheld on a returned native array call.
+Filtering is scoped to synchronous app-collection item-content insertion, not a timer/gesture guess. Unknown/unmarked elements pass. Completed calls are not proof that all visible cards are gone.
+
+MINIMIZE / MUTATION OBSERVATION
+Prerequisites: current launch / saved next launch
+enabled: on / on
+adTest: on / on
+feedAds: on / on
+extendedFeed: on / on
+displayAds: on / on
+inspectElements: on / on
+mutationTrace: on / on
+willCollapse: installed=yes calls=2
+didCollapse: installed=yes calls=2
+layoutChanged: installed=yes calls=5
+applyMutationOperation:error:: installed=yes calls=1
+handleInsertSectionOperation:error:: installed=yes calls=0
+handleInsertItemSectionContent:error:: installed=yes calls=1
+handleReplaceSection:error:: installed=yes calls=0
+handleReplaceItemSectionContent:error:: installed=yes calls=0
+didInsertEntries:atIndexes:: installed=yes calls=1
+Window anchor: collapse start. Times relative to that event, or first retained event if no anchor.
+Element detail samples: 0 / 6 per window; max 3 entries/call, 8 template candidates/entry, 256 KiB/entry.
+Template candidates are lexical clues, not decoded roots or a deletion verdict. No raw bytes/titles/URLs are printed.
+Up to 24 pre-events / 96 total; 12s window. Discarded=9; outside-window=0.
+Trace callbacks are observational. The shared handler scopes explicit-ad filtering separately (see feed counters). Nearby events alone do not prove ad identity. No monitored call does not mean no native mutation.
++0.000s willCollapse receiver=YTWatchLayerViewController arg=nil enter style=0
++0.541s layoutChanged receiver=YTAppWatchControllerImpl arg=nil enter layout=2->1 (unmapped)
++0.549s didCollapse receiver=YTWatchLayerViewController arg=nil returned gesture=64
+
+END AD TEST REPORT
+
+ACTIVE THIS LAUNCH
+adTest = on
+autoplay = on
+background = on
+displayAds = on
+edgeCards = on
+enabled = on
+eventPromos = on
+extendedFeed = on
+feedAds = on
+inspectElements = on
+mixes = on
+mutationTrace = on
+plainLogo = on
+playables = on
+shorts = on
+topicsShelves = on
+watchAgain = on
+
+FLAGS SAVED FOR NEXT LAUNCH
+enabled = on
+mutationTrace = on
+adTest = on
+watchAgain = on
+mixes = on
+displayAds = on
+topicsShelves = on
+edgeCards = on
+plainLogo = on
+inspectElements = on
+extendedFeed = on
+playables = on
+eventPromos = on
+feedAds = on
+shorts = on
+background = on
+autoplay = on
+
+HOOKS
+MLVideo / playableInBackground : installed (behavior unverified)
+YTAppWatchControllerImpl / handleWatchViewLayoutChangedFromLayout:toLayout: : installed (behavior unverified)
+YTArraySectionViewModel / didInsertEntries:atIndexes: : installed (behavior unverified)
+YTArraySectionViewModel / insertEntries:atIndex: : installed (behavior unverified)
+YTHeaderLogoControllerImpl / updateLogoFromNitrateIfNeeded : installed (behavior unverified)
+YTHeaderLogoControllerImpl / updateLogoWithLottieAnimation: : installed (behavior unverified)
+YTIPlayabilityStatus / isPlayableInBackground : installed (behavior unverified)
+YTInnerTubeCollectionViewController / addSectionsFromArray: : installed (behavior unverified)
+YTInnerTubeCollectionViewController / applyMutationOperation:error: : installed (behavior unverified)
+YTInnerTubeCollectionViewController / handleInsertItemSectionContent:error: : installed (behavior unverified)
+YTInnerTubeCollectionViewController / handleInsertSectionOperation:error: : installed (behavior unverified)
+YTInnerTubeCollectionViewController / handleReplaceItemSectionContent:error: : installed (behavior unverified)
+YTInnerTubeCollectionViewController / handleReplaceSection:error: : installed (behavior unverified)
+YTQueueController / triggerPendingAutoplay : installed (behavior unverified)
+YTRealAdsPlayerServices / adsPlaybackCoordinatorWithOverlayManager:delegate:parentResponder:contentPlayerResponse: : installed (behavior unverified)
+YTSettingsViewController / setSectionItems:forCategory:title:icon:titleDescription:headerHidden: : installed (behavior unverified)
+YTSettingsViewController / setSectionItems:forCategory:title:titleDescription:headerHidden: : unavailable
+YTWatchFlowController / playAutoplay : installed (behavior unverified)
+YTWatchLayerViewController / didCollapseWatchFlowWithGestureType: : installed (behavior unverified)
+YTWatchLayerViewController / willCollapseWatchFlowWithAnimationStyle: : installed (behavior unverified)
+
+SESSION COUNTERS (not unique ads/videos)
+background : 170
+element payload inspected : 347
+element renderer visited : 347
+element retained — no active rule matched : 346
+event logo replaced by native default : 3
+extended traversal node visited : 881
+match explicit ad logging : 2
+match topics shelf element tokens : 1
+playback error YouTube code 14 : 7
+playbackFix: installed : 1
+presentation batch changed : 3
+presentation boundary invoked : 24
+presentation nodes filtered : 3
+settings entry appended : 4
+sideloadFix: installed : 1
+sponsorSkip: installed : 1
+
+UNMATCHED ELEMENT TEMPLATE CAPTURE
+capture enabled this launch: yes (enhanced master on)
+Lexical identifier-shaped names, not verified root renderers. Nested names may appear. Groups are NOT individual visible cards. Review before sharing.
+unmatched elements sampled: 128 / 128
+elements without accepted identifiers: 61
+group-cap drops: 0
+group 1 (seen 5): home_vertical_feed_prominence_group_key, inline_injection_teaser
+group 2 (seen 1): home_vertical_feed_prominence_group_key, ic_video_youtube, inline_injection_teaser, post_lockup, posts_lockup
+group 3 (seen 4): video_metadata.eml-fe
+group 4 (seen 4): ic_video_youtube, id.video.add_to.button
+group 5 (seen 4): video_metadata_carousel_collection
+group 6 (seen 47): inline_injection_teaser
+group 7 (seen 2): ic_video_youtube, post_lockup, posts_lockup
+SponsorSkip: enabled=on introOutro=off selfPromo=off skipped=0 fetches=24 cacheHits=4 currentPrefix=0251 segments=0
+PlaybackFix: retries=6 stallRecovered=0 emergency=2 retrying=no
+Sideload: yes
+
+QuietTube 1.3.0-exp.34 diagnostics
+Recording: yes (master on). Queue drops: 0. Rate drops: 104.
+Local only; review identifiers before sharing. Not all events are observed.
+Events: 0=start,1=stop,2=app,3=playback error,4=player,5=mutation,6=feed boundary,7=element,8=hook,9=sponsorFetch,10=sponsorSkip,11=sponsorCache.
+SponsorFetch: prefix=4-char hash, segments=raw, filtered=after category, latency=ms, status=HTTP, cached=0/1, result=hit/miss/success/fail.
+SponsorSkip: prefix, segments, filtered, start/end=ms, category, votes, skipped=total, result=skip/noskip/grace/disabled.
+SponsorCache: prefix, segments, cached, result=store/load/clear/evict, status.
+Error domains: 0=other,1=YouTube,2=URL,3=Cocoa,4=OSStatus.
+App phase: 0=active,1=background,2=memory warning,3=termination notification (not guaranteed).
+Player phase: 0=factory invoked,1=no-op supplied,2=session safety pause,3=native fallback.
+Mutation slots follow existing report: collapse-start/end,layout,apply,insert-section,insert-content,replace-section/content,insert-notification.
+Feed phase: 0=presentation input,1=pre-insert,2=insert returned. Element mask is a heuristic, not ad proof; ad=-1 means marker unreadable.
+Enhanced logger: single master toggle, 3 files x 256 KiB, 7-day window. Auto-rotates, no upload.
+{"at":1791085629.995244,"event":0,"fields":{}}
+{"at":1791085631.17646,"event":9,"fields":{"cached":0,"prefix":"none","result":"poll_novid"}}
+{"at":1791085631.4826279,"event":2,"fields":{"phase":1}}
+{"at":1791085635.3783898,"event":0,"fields":{}}
+{"at":1791085635.53808,"event":8,"fields":{"class":"YTSingleVideoEventCenter","installed":1,"selector":"singleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085635.542459,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085635.5607948,"event":8,"fields":{"installed":1,"selector":"setCurrentTime:"}}
+{"at":1791085635.5650001,"event":8,"fields":{"class":"YTInlinePlayerBarContainerView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085635.5691681,"event":8,"fields":{"class":"YTWatchFloatingMiniplayerProgressBarView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085635.869154,"event":8,"fields":{"class":"YTSettingsViewController","installed":1,"selector":"setSectionItems:forCategory:title:icon:titleDescription:headerHidden:"}}
+{"at":1791085635.869185,"event":8,"fields":{"class":"YTSettingsViewController","installed":0,"selector":"setSectionItems:forCategory:title:titleDescription:headerHidden:"}}
+{"at":1791085635.8739491,"event":8,"fields":{"class":"YTHeaderLogoControllerImpl","installed":1,"selector":"updateLogoFromNitrateIfNeeded"}}
+{"at":1791085635.878185,"event":8,"fields":{"class":"YTHeaderLogoControllerImpl","installed":1,"selector":"updateLogoWithLottieAnimation:"}}
+{"at":1791085635.8825331,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"handleInsertItemSectionContent:error:"}}
+{"at":1791085635.8878632,"event":8,"fields":{"class":"YTArraySectionViewModel","installed":1,"selector":"insertEntries:atIndex:"}}
+{"at":1791085635.8922679,"event":8,"fields":{"class":"YTRealAdsPlayerServices","installed":1,"selector":"adsPlaybackCoordinatorWithOverlayManager:delegate:parentResponder:contentPlayerResponse:"}}
+{"at":1791085635.896558,"event":8,"fields":{"class":"YTWatchLayerViewController","installed":1,"selector":"willCollapseWatchFlowWithAnimationStyle:"}}
+{"at":1791085635.900816,"event":8,"fields":{"class":"YTWatchLayerViewController","installed":1,"selector":"didCollapseWatchFlowWithGestureType:"}}
+{"at":1791085635.9049702,"event":8,"fields":{"class":"YTAppWatchControllerImpl","installed":1,"selector":"handleWatchViewLayoutChangedFromLayout:toLayout:"}}
+{"at":1791085635.9091649,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"applyMutationOperation:error:"}}
+{"at":1791085635.9133391,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"handleInsertSectionOperation:error:"}}
+{"at":1791085635.917577,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"handleReplaceSection:error:"}}
+{"at":1791085635.921756,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"handleReplaceItemSectionContent:error:"}}
+{"at":1791085635.9259129,"event":8,"fields":{"class":"YTArraySectionViewModel","installed":1,"selector":"didInsertEntries:atIndexes:"}}
+{"at":1791085635.930083,"event":8,"fields":{"class":"YTInnerTubeCollectionViewController","installed":1,"selector":"addSectionsFromArray:"}}
+{"at":1791085635.9343171,"event":8,"fields":{"class":"YTIPlayabilityStatus","installed":1,"selector":"isPlayableInBackground"}}
+{"at":1791085635.938509,"event":8,"fields":{"class":"MLVideo","installed":1,"selector":"playableInBackground"}}
+{"at":1791085635.9427471,"event":8,"fields":{"class":"YTWatchFlowController","installed":1,"selector":"playAutoplay"}}
+{"at":1791085636.6012959,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"playbackController:didActivateVideo:withPlaybackData:"}}
+{"at":1791085636.6505151,"event":8,"fields":{"class":"YTSingleVideoEventCenter","installed":1,"selector":"singleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085636.6578121,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085636.6772399,"event":8,"fields":{"installed":1,"selector":"setCurrentTime:"}}
+{"at":1791085636.6816092,"event":8,"fields":{"class":"YTInlinePlayerBarContainerView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085636.6859422,"event":8,"fields":{"class":"YTWatchFloatingMiniplayerProgressBarView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085636.6859798,"event":8,"fields":{"class":"YTSettingsViewController","installed":0,"selector":"setSectionItems:forCategory:title:titleDescription:headerHidden:"}}
+{"at":1791085636.826838,"event":6,"fields":{"class":"YTFeedFilterChipBarViewController","count":1,"phase":0}}
+{"at":1791085636.826853,"event":6,"fields":{"class":"YTIFeedFilterChipBarRenderer","depth":1}}
+{"at":1791085636.8268828,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085636.826942,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085636.8269491,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085636.829386,"event":6,"fields":{"class":"YTArraySectionViewModel","count":23,"phase":1}}
+{"at":1791085636.8293939,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085636.830246,"event":7,"fields":{"ad":0,"bytes":8583,"class":"YTIElementRenderer","mask":0}}
+{"at":1791085636.8302689,"event":6,"fields":{"class":"YTIChipDividerRenderer","depth":1}}
+{"at":1791085636.830287,"event":6,"fields":{"class":"YTIChipCloudChipRenderer","depth":1}}
+{"at":1791085636.8303108,"event":6,"fields":{"class":"YTIRenderer","depth":2}}
+{"at":1791085636.8303452,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085636.837235,"event":6,"fields":{"class":"YTAppCollectionViewController","count":13,"phase":0}}
+{"at":1791085636.837244,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085636.8372579,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085636.8373041,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085636.8373132,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085637.8978961,"event":4,"fields":{"phase":0}}
+{"at":1791085637.8979211,"event":4,"fields":{"phase":1}}
+{"at":1791085637.92238,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"hook_vid"}}
+{"at":1791085637.9227319,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"miss"}}
+{"at":1791085637.9230042,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"start"}}
+{"at":1791085637.9233861,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"start"}}
+{"at":1791085637.9234571,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"hook_vid"}}
+{"at":1791085637.9237242,"event":9,"fields":{"cached":0,"prefix":"f2c4","result":"start"}}
+{"at":1791085638.1864851,"event":11,"fields":{"cached":1,"prefix":"f2c4","result":"store","segments":0}}
+{"at":1791085638.1865921,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"f2c4","result":"success","segments":0,"status":404}}
+{"at":1791085638.615098,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"playbackController:didActivateVideo:withPlaybackData:"}}
+{"at":1791085638.6586981,"event":8,"fields":{"class":"YTSingleVideoEventCenter","installed":1,"selector":"singleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085638.666157,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085638.6799121,"event":11,"fields":{"cached":1,"prefix":"f2c4","result":"store","segments":0}}
+{"at":1791085638.6799591,"event":11,"fields":{"cached":1,"prefix":"f2c4","result":"store","segments":0}}
+{"at":1791085638.6866159,"event":8,"fields":{"installed":1,"selector":"setCurrentTime:"}}
+{"at":1791085638.690985,"event":8,"fields":{"class":"YTInlinePlayerBarContainerView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085638.6952429,"event":8,"fields":{"class":"YTWatchFloatingMiniplayerProgressBarView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085638.6952801,"event":8,"fields":{"class":"YTSettingsViewController","installed":0,"selector":"setSectionItems:forCategory:title:titleDescription:headerHidden:"}}
+{"at":1791085638.6982579,"event":10,"fields":{"category":"time","prefix":"f2c4","result":"tick","skipped":0,"start":203}}
+{"at":1791085638.6982908,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"f2c4","result":"success","segments":0,"status":404}}
+{"at":1791085638.6983099,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"f2c4","result":"success","segments":0,"status":404}}
+{"at":1791085640.575192,"event":4,"fields":{"phase":0}}
+{"at":1791085640.5752079,"event":4,"fields":{"phase":1}}
+{"at":1791085640.6147299,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085640.6147399,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085640.6147652,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085640.614783,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085640.6147928,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085640.614816,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085640.614826,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085640.6154389,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085640.6154461,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085640.615464,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085640.6157122,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085640.6157231,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085640.615737,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085640.6157432,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085640.6157498,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085641.015785,"event":5,"fields":{"class":"YTAppWatchControllerImpl","count":0,"slot":2}}
+{"at":1791085641.159261,"event":4,"fields":{"phase":0}}
+{"at":1791085641.1592951,"event":4,"fields":{"phase":1}}
+{"at":1791085641.1966591,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085641.196882,"event":9,"fields":{"cached":0,"prefix":"7724","result":"miss"}}
+{"at":1791085641.1970801,"event":9,"fields":{"cached":0,"prefix":"7724","result":"start"}}
+{"at":1791085641.1973109,"event":9,"fields":{"cached":0,"prefix":"7724","result":"start"}}
+{"at":1791085641.9218612,"event":11,"fields":{"cached":1,"prefix":"7724","result":"store","segments":0}}
+{"at":1791085641.9219799,"event":11,"fields":{"cached":1,"prefix":"7724","result":"store","segments":0}}
+{"at":1791085641.9219999,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"7724","result":"success","segments":0,"status":404}}
+{"at":1791085641.923079,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"7724","result":"success","segments":0,"status":404}}
+{"at":1791085641.9802639,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":9,"phase":0}}
+{"at":1791085641.9802899,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085641.980361,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085641.980418,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085641.9804389,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085641.980474,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085641.980499,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085642.0141621,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085642.014179,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085642.014555,"event":7,"fields":{"ad":0,"bytes":4034,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085642.014581,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085642.016824,"event":7,"fields":{"ad":0,"bytes":41405,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085642.016839,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085642.0170121,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085642.01702,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085642.0171981,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085642.017205,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085642.0174241,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085642.017431,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085642.017575,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085643.6053739,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"playbackController:didActivateVideo:withPlaybackData:"}}
+{"at":1791085643.648309,"event":8,"fields":{"class":"YTSingleVideoEventCenter","installed":1,"selector":"singleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085643.6561909,"event":8,"fields":{"class":"YTPlayerViewController","installed":1,"selector":"potentiallyMutatedSingleVideo:currentVideoTimeDidChange:"}}
+{"at":1791085643.6767511,"event":8,"fields":{"installed":1,"selector":"setCurrentTime:"}}
+{"at":1791085643.6813231,"event":8,"fields":{"class":"YTInlinePlayerBarContainerView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085643.6858048,"event":8,"fields":{"class":"YTWatchFloatingMiniplayerProgressBarView","installed":1,"selector":"layoutSubviews"}}
+{"at":1791085643.6858449,"event":8,"fields":{"class":"YTSettingsViewController","installed":0,"selector":"setSectionItems:forCategory:title:titleDescription:headerHidden:"}}
+{"at":1791085643.7355828,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":1459}}
+{"at":1791085648.8557348,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":6579}}
+{"at":1791085653.895025,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":11618}}
+{"at":1791085659.0915871,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085659.0916061,"event":4,"fields":{"phase":2}}
+{"at":1791085659.9415121,"event":4,"fields":{"phase":3}}
+{"at":1791085659.9562411,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085659.956269,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085659.956326,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085659.956383,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085659.9564109,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085659.9565029,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085659.956532,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085659.9581141,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085659.9581289,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085659.958173,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085659.958693,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085659.9587059,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085659.9587421,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085659.9587541,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085659.9587731,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085660.684634,"event":9,"fields":{"cached":0,"prefix":"596d","result":"hook_vid"}}
+{"at":1791085660.684845,"event":9,"fields":{"cached":0,"prefix":"596d","result":"miss"}}
+{"at":1791085660.685024,"event":9,"fields":{"cached":0,"prefix":"596d","result":"start"}}
+{"at":1791085660.6852441,"event":9,"fields":{"cached":0,"prefix":"596d","result":"start"}}
+{"at":1791085660.6853008,"event":9,"fields":{"cached":0,"prefix":"596d","result":"hook_vid"}}
+{"at":1791085660.685626,"event":9,"fields":{"cached":0,"prefix":"596d","result":"start"}}
+{"at":1791085660.6857529,"event":9,"fields":{"cached":0,"prefix":"596d","result":"hook_vid"}}
+{"at":1791085660.686142,"event":9,"fields":{"cached":0,"prefix":"596d","result":"start"}}
+{"at":1791085660.6862621,"event":9,"fields":{"cached":0,"prefix":"596d","result":"hook_vid"}}
+{"at":1791085660.686641,"event":9,"fields":{"cached":0,"prefix":"596d","result":"start"}}
+{"at":1791085660.8924642,"event":11,"fields":{"cached":1,"prefix":"596d","result":"store","segments":0}}
+{"at":1791085660.892509,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"596d","result":"success","segments":0,"status":404}}
+{"at":1791085660.9098959,"event":11,"fields":{"cached":1,"prefix":"596d","result":"store","segments":0}}
+{"at":1791085660.9099441,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"596d","result":"success","segments":0,"status":404}}
+{"at":1791085660.9102311,"event":11,"fields":{"cached":1,"prefix":"596d","result":"store","segments":0}}
+{"at":1791085660.9102731,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"596d","result":"success","segments":0,"status":404}}
+{"at":1791085661.0673661,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":5,"phase":0}}
+{"at":1791085661.067385,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085661.067441,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085661.067476,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085661.0675058,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085661.067517,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085661.067533,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085661.092442,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085663.314748,"event":4,"fields":{"phase":3}}
+{"at":1791085663.899574,"event":9,"fields":{"cached":0,"prefix":"0698","result":"hook_vid"}}
+{"at":1791085663.9001069,"event":9,"fields":{"cached":0,"prefix":"0698","result":"miss"}}
+{"at":1791085663.9004259,"event":9,"fields":{"cached":0,"prefix":"0698","result":"start"}}
+{"at":1791085663.900712,"event":9,"fields":{"cached":0,"prefix":"0698","result":"start"}}
+{"at":1791085663.9007759,"event":9,"fields":{"cached":0,"prefix":"0698","result":"hook_vid"}}
+{"at":1791085663.9012079,"event":9,"fields":{"cached":0,"prefix":"0698","result":"start"}}
+{"at":1791085663.901386,"event":9,"fields":{"cached":0,"prefix":"0698","result":"hook_vid"}}
+{"at":1791085663.9017901,"event":9,"fields":{"cached":0,"prefix":"0698","result":"start"}}
+{"at":1791085663.901901,"event":9,"fields":{"cached":0,"prefix":"0698","result":"hook_vid"}}
+{"at":1791085663.902245,"event":9,"fields":{"cached":0,"prefix":"0698","result":"start"}}
+{"at":1791085664.031378,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085664.031389,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085664.033356,"event":7,"fields":{"ad":0,"bytes":51915,"class":"YTIElementRenderer","mask":0,"template0":"engagement_panel_about_this_ad_","template1":"skip_ad_on_block","template2":"engagement_panel_about_this_ad_8"}}
+{"at":1791085664.0333729,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085664.061554,"event":6,"fields":{"class":"YTAppCollectionViewController","count":1,"phase":0}}
+{"at":1791085664.061563,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085664.0615799,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085664.0658798,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085664.0658879,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085664.065897,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085664.1048388,"event":11,"fields":{"cached":1,"prefix":"0698","result":"store","segments":0}}
+{"at":1791085664.1169581,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0698","result":"success","segments":0,"status":404}}
+{"at":1791085664.601881,"event":11,"fields":{"cached":1,"prefix":"0698","result":"store","segments":0}}
+{"at":1791085664.601933,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0698","result":"success","segments":0,"status":404}}
+{"at":1791085664.603447,"event":11,"fields":{"cached":1,"prefix":"0698","result":"store","segments":0}}
+{"at":1791085664.6034851,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0698","result":"success","segments":0,"status":404}}
+{"at":1791085664.603508,"event":11,"fields":{"cached":1,"prefix":"0698","result":"store","segments":0}}
+{"at":1791085664.603539,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0698","result":"success","segments":0,"status":404}}
+{"at":1791085664.6044321,"event":11,"fields":{"cached":1,"prefix":"0698","result":"store","segments":0}}
+{"at":1791085664.604461,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0698","result":"success","segments":0,"status":404}}
+{"at":1791085666.236407,"event":10,"fields":{"category":"time","prefix":"0698","result":"tick","skipped":0,"start":2063}}
+{"at":1791085670.9389391,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085670.938961,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085670.9428868,"event":7,"fields":{"ad":0,"bytes":51812,"class":"YTIElementRenderer","mask":0,"template0":"engagement_panel_about_this_ad_","template1":"skip_ad_on_block","template2":"engagement_panel_about_this_ad_8"}}
+{"at":1791085670.942919,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085670.9808269,"event":6,"fields":{"class":"YTAppCollectionViewController","count":1,"phase":0}}
+{"at":1791085670.9808469,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085670.980875,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085670.985985,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085670.985996,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085670.986007,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085671.0136709,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"hook_vid"}}
+{"at":1791085671.01385,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"miss"}}
+{"at":1791085671.013998,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"start"}}
+{"at":1791085671.0141659,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"start"}}
+{"at":1791085671.0142031,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"hook_vid"}}
+{"at":1791085671.014329,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"start"}}
+{"at":1791085671.014364,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"hook_vid"}}
+{"at":1791085671.014488,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"start"}}
+{"at":1791085671.014519,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"hook_vid"}}
+{"at":1791085671.0146461,"event":9,"fields":{"cached":0,"prefix":"74e2","result":"start"}}
+{"at":1791085671.2181511,"event":11,"fields":{"cached":1,"prefix":"74e2","result":"store","segments":0}}
+{"at":1791085671.2182078,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"74e2","result":"success","segments":0,"status":404}}
+{"at":1791085671.29599,"event":10,"fields":{"category":"time","prefix":"74e2","result":"tick","skipped":0,"start":402}}
+{"at":1791085671.7162561,"event":11,"fields":{"cached":1,"prefix":"74e2","result":"store","segments":0}}
+{"at":1791085676.2961988,"event":10,"fields":{"category":"time","prefix":"74e2","result":"tick","skipped":0,"start":5402}}
+{"at":1791085677.0132761,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085677.0133359,"event":9,"fields":{"cached":1,"filtered":0,"prefix":"7724","result":"hit","segments":0}}
+{"at":1791085677.0135069,"event":9,"fields":{"cached":0,"prefix":"7724","result":"start"}}
+{"at":1791085677.013608,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085677.0136361,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085677.0136619,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085677.047538,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085677.2159719,"event":11,"fields":{"cached":1,"prefix":"7724","result":"store","segments":0}}
+{"at":1791085677.216033,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"7724","result":"success","segments":0,"status":404}}
+{"at":1791085677.864903,"event":4,"fields":{"phase":3}}
+{"at":1791085677.8795118,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085677.87954,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085677.87959,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085677.8796201,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085677.8796439,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085677.879694,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085677.8797212,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085677.881021,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085677.881037,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085677.8811212,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085677.88164,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085677.881654,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085677.881669,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085677.881681,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085677.881701,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085678.1095629,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085678.1096292,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085678.109673,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085678.109715,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085678.984622,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":9,"phase":0}}
+{"at":1791085678.984652,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085678.9847488,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085678.984796,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085678.9848161,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085678.984832,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085678.9848561,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085679.0233901,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085679.0234041,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085679.0238571,"event":7,"fields":{"ad":0,"bytes":4034,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085679.0238681,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085679.0265632,"event":7,"fields":{"ad":0,"bytes":41405,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085679.0265851,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.0268149,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085679.026829,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.0270948,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085679.0271039,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.0272942,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085679.027302,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.027463,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085679.0274701,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.0275731,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085679.02758,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085679.0277381,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085681.515403,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":19738}}
+{"at":1791085686.575177,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":24798}}
+{"at":1791085691.6552701,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":29879}}
+{"at":1791085693.008795,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085693.8229098,"event":4,"fields":{"phase":3}}
+{"at":1791085693.8362961,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085693.8363252,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085693.8363729,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085693.8364029,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085693.8364282,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085693.8364649,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085693.836493,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085693.8378711,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085693.837894,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085693.8379169,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085693.8384371,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085693.838454,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085693.838469,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085693.8384809,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085693.8385029,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085693.9875069,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085693.987555,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085693.9875898,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085693.987622,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085695.2087321,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":7,"phase":0}}
+{"at":1791085695.208766,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085695.2087979,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085695.2088561,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085695.2088749,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085695.2088909,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085695.2089128,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085695.2457139,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085695.245728,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085695.2461848,"event":7,"fields":{"ad":0,"bytes":4034,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085695.246197,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085695.248893,"event":7,"fields":{"ad":0,"bytes":41409,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085695.2489109,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085695.2491012,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085695.2491121,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085695.2493429,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085695.249351,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085695.2496819,"event":6,"fields":{"class":"YTArraySectionViewModel","count":29,"phase":1}}
+{"at":1791085695.2497082,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085695.250546,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085695.2505531,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085695.250644,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085695.2506509,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085696.7161322,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":33430}}
+{"at":1791085696.8692031,"event":5,"fields":{"class":"YTWatchLayerViewController","count":0,"slot":0}}
+{"at":1791085697.3944831,"event":5,"fields":{"class":"YTAppWatchControllerImpl","count":0,"slot":2}}
+{"at":1791085697.4030042,"event":5,"fields":{"class":"YTWatchLayerViewController","count":0,"slot":1}}
+{"at":1791085697.8362341,"event":5,"fields":{"argumentClass":"YTISectionListMutationOperation","class":"YTAppCollectionViewController","count":0,"slot":3}}
+{"at":1791085697.8362679,"event":6,"fields":{"argumentClass":"YTISectionListMutationOperation","class":"YTAppCollectionViewController","count":0,"phase":1}}
+{"at":1791085697.8362799,"event":6,"fields":{"class":"YTISectionListMutationOperation","depth":0}}
+{"at":1791085697.836391,"event":5,"fields":{"argumentClass":"YTIInsertItemSectionContentOperation","class":"YTAppCollectionViewController","count":0,"slot":5}}
+{"at":1791085697.8364069,"event":6,"fields":{"argumentClass":"YTIInsertItemSectionContentOperation","class":"YTAppCollectionViewController","count":0,"phase":1}}
+{"at":1791085697.8364182,"event":6,"fields":{"class":"YTIInsertItemSectionContentOperation","depth":0}}
+{"at":1791085697.836472,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":2}}
+{"at":1791085697.836504,"event":6,"fields":{"class":"YTIElementRenderer","depth":3}}
+{"at":1791085697.8502588,"event":7,"fields":{"ad":1,"bytes":204471,"class":"YTIElementRenderer","mask":0,"template0":"home_vertical_feed_prominence_group_key","template1":"inline_injection_teaser","template2":"engagement_panel_about_this_ad_","template3":"skip_ad_on_block"}}
+{"at":1791085697.8503389,"event":6,"fields":{"class":"YTIShelfRenderer","depth":3}}
+{"at":1791085697.8505878,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085697.850601,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085697.8506279,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085697.8507261,"event":5,"fields":{"class":"YTArraySectionViewModel","count":1,"slot":8}}
+{"at":1791085697.850739,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":2}}
+{"at":1791085698.1562471,"event":5,"fields":{"class":"YTAppWatchControllerImpl","count":0,"slot":2}}
+{"at":1791085698.830339,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085698.8304019,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085698.8304439,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085698.830483,"event":9,"fields":{"cached":0,"prefix":"7724","result":"hook_vid"}}
+{"at":1791085701.856005,"event":10,"fields":{"category":"time","prefix":"7724","result":"tick","skipped":0,"start":2737}}
+{"at":1791085703.4713988,"event":6,"fields":{"class":"YTArraySectionViewModel","count":20,"phase":1}}
+{"at":1791085703.4714179,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085703.471633,"event":7,"fields":{"ad":0,"bytes":1575,"class":"YTIElementRenderer","mask":0,"template0":"shelf_header.eml-fe"}}
+{"at":1791085703.4716501,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085703.4724259,"event":7,"fields":{"ad":0,"bytes":8360,"class":"YTIElementRenderer","mask":16,"template0":"chips_shelf.eml-js-fe"}}
+{"at":1791085703.472436,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085703.4727979,"event":7,"fields":{"ad":0,"bytes":3278,"class":"YTIElementRenderer","mask":0}}
+{"at":1791085703.47282,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085703.4919651,"event":6,"fields":{"class":"YTArraySectionViewModel","count":20,"phase":1}}
+{"at":1791085703.491987,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085704.012738,"event":6,"fields":{"class":"YTAppCollectionViewController","count":2,"phase":0}}
+{"at":1791085704.032388,"event":6,"fields":{"class":"YTArraySectionViewModel","count":19,"phase":1}}
+{"at":1791085704.0324159,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085705.032974,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085705.0329881,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085705.0330141,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085705.0330369,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085705.0330482,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085705.0330691,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085705.033082,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085705.0337329,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085705.033742,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085705.0337539,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085705.03403,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085705.0340371,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085705.0340428,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085705.03405,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085705.034059,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085705.320972,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085705.32462,"event":9,"fields":{"cached":1,"filtered":0,"prefix":"0251","result":"hit","segments":0}}
+{"at":1791085705.3247061,"event":9,"fields":{"cached":0,"prefix":"0251","result":"start"}}
+{"at":1791085705.324837,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085705.324878,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085705.3249149,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085705.4323912,"event":5,"fields":{"class":"YTAppWatchControllerImpl","count":0,"slot":2}}
+{"at":1791085705.543052,"event":11,"fields":{"cached":1,"prefix":"0251","result":"store","segments":0}}
+{"at":1791085705.5431108,"event":9,"fields":{"cached":0,"filtered":0,"prefix":"0251","result":"success","segments":0,"status":200}}
+{"at":1791085706.0399051,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":9,"phase":0}}
+{"at":1791085706.0399311,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085706.0399561,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085706.0400028,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085706.0400229,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085706.0400391,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085706.0400629,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085706.0769029,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085706.076916,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085706.0773129,"event":7,"fields":{"ad":0,"bytes":3701,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085706.0773249,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085706.0799742,"event":7,"fields":{"ad":0,"bytes":40786,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085706.0799921,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.080173,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085706.080183,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.0804071,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085706.0804141,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.0805979,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085706.080605,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.0807772,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085706.0807838,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.080878,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085706.0808849,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085706.0810339,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085709.4483409,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085710.2750859,"event":4,"fields":{"phase":3}}
+{"at":1791085710.289763,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085710.289793,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085710.2898378,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085710.2898679,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085710.2898951,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085710.289933,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085710.2899599,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085710.2912269,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085710.291244,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085710.291266,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085710.2917871,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085710.2918,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085710.2918139,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085710.291827,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085710.291846,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085710.6495218,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085710.649585,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085710.6496291,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085710.649667,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085711.837749,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":9,"phase":0}}
+{"at":1791085711.837779,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085711.8378091,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085711.837863,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085711.8378839,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085711.8379002,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085711.837924,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085711.8751311,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085711.875149,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085711.8755989,"event":7,"fields":{"ad":0,"bytes":3701,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085711.8756142,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085711.8785329,"event":7,"fields":{"ad":0,"bytes":40782,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085711.878557,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.8787699,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085711.8787799,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.879066,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085711.8790751,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.879282,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085711.8792901,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.879458,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085711.8794661,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.8795829,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085711.87959,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085711.87976,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085712.8112791,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085713.7428131,"event":4,"fields":{"phase":3}}
+{"at":1791085713.7573681,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085713.7573938,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085713.757432,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085713.7574592,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085713.7574821,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085713.7575169,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085713.757544,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085713.758672,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085713.7586861,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085713.758707,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085713.7591381,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085713.759151,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085713.759165,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085713.7591782,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085713.759196,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085714.130218,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085714.1302938,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085714.1303458,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085714.1303949,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085714.668021,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":9,"phase":0}}
+{"at":1791085714.668045,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085714.668067,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085714.668108,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085716.408592,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085717.2520552,"event":4,"fields":{"phase":3}}
+{"at":1791085717.2671061,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085717.2671351,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085717.2671981,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085717.2672319,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085717.267262,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085717.2673039,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085717.2673321,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085717.2687101,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085717.2687311,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085717.2687621,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085717.2692761,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085717.2692909,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085717.2693059,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085717.2693181,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085717.2693372,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085717.6699219,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085717.6700339,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085717.6700931,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085717.6701422,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085717.9845428,"event":10,"fields":{"category":"time","prefix":"0251","result":"tick","skipped":0,"start":11322}}
+{"at":1791085718.6163459,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":5,"phase":0}}
+{"at":1791085718.616375,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085718.6164041,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085718.616452,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085718.616473,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085718.6164889,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085718.616513,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085718.6514201,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085718.651437,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085718.6518822,"event":7,"fields":{"ad":0,"bytes":3701,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085718.651897,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085718.654789,"event":7,"fields":{"ad":0,"bytes":40786,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085718.6548109,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085718.65503,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085718.655041,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085718.655302,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085718.6553121,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085718.6556869,"event":6,"fields":{"class":"YTArraySectionViewModel","count":29,"phase":1}}
+{"at":1791085718.6557121,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085723.077956,"event":10,"fields":{"category":"time","prefix":"0251","result":"tick","skipped":0,"start":16423}}
+{"at":1791085728.1175399,"event":10,"fields":{"category":"time","prefix":"0251","result":"tick","skipped":0,"start":21463}}
+{"at":1791085728.564806,"event":3,"fields":{"code":14,"depth":0,"domain":1}}
+{"at":1791085729.414041,"event":4,"fields":{"phase":3}}
+{"at":1791085729.42747,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":2,"phase":0}}
+{"at":1791085729.4274969,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085729.4275641,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085729.427593,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085729.4276171,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085729.427655,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085729.4276819,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085729.428961,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085729.4289761,"event":6,"fields":{"class":"YTISlimVideoInformationRenderer","depth":1}}
+{"at":1791085729.428998,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085729.429507,"event":6,"fields":{"class":"YTArraySectionViewModel","count":4,"phase":1}}
+{"at":1791085729.4295211,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085729.4295359,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085729.4295502,"event":6,"fields":{"class":"YTISectionListGhostCardRenderer","depth":1}}
+{"at":1791085729.429574,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085729.8408251,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085729.840904,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085729.8409591,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085729.8410091,"event":9,"fields":{"cached":0,"prefix":"0251","result":"hook_vid"}}
+{"at":1791085730.6039109,"event":6,"fields":{"class":"YTWatchNextResultsViewController","count":5,"phase":0}}
+{"at":1791085730.603946,"event":6,"fields":{"class":"YTICompanionAdRenderer","depth":1}}
+{"at":1791085730.603976,"event":6,"fields":{"class":"YTISlimVideoMetadataSectionRenderer","depth":1}}
+{"at":1791085730.6040258,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085730.6040459,"event":6,"fields":{"class":"YTIRenderer","depth":3}}
+{"at":1791085730.6040621,"event":6,"fields":{"class":"YTIItemSectionRenderer","depth":1}}
+{"at":1791085730.6040859,"event":6,"fields":{"class":"YTIItemSectionSupportedRenderers","depth":3}}
+{"at":1791085730.639365,"event":6,"fields":{"class":"YTArraySectionViewModel","count":2,"phase":1}}
+{"at":1791085730.63939,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085730.6398489,"event":7,"fields":{"ad":0,"bytes":3701,"class":"YTIElementRenderer","mask":0,"template0":"video_metadata.eml-fe"}}
+{"at":1791085730.639863,"event":6,"fields":{"class":"YTIElementRenderer","depth":1}}
+{"at":1791085730.642781,"event":7,"fields":{"ad":0,"bytes":40782,"class":"YTIElementRenderer","mask":0,"template0":"id.video.add_to.button","template1":"ic_video_youtube"}}
+{"at":1791085730.6427999,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085730.6430149,"event":6,"fields":{"class":"YTCommentSectionViewModel","count":1,"phase":1}}
+{"at":1791085730.6430259,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085730.643276,"event":6,"fields":{"class":"YTArraySectionViewModel","count":1,"phase":1}}
+{"at":1791085730.643285,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085730.6436701,"event":6,"fields":{"class":"YTArraySectionViewModel","count":29,"phase":1}}
+{"at":1791085730.6436949,"event":6,"fields":{"kept":0,"phase":2,"removed":0,"scope":0}}
+{"at":1791085731.6295691,"event":5,"fields":{"class":"YTWatchLayerViewController","count":0,"slot":0}}
+{"at":1791085732.170794,"event":5,"fields":{"class":"YTAppWatchControllerImpl","count":0,"slot":2}}
+{"at":1791085732.1784949,"event":5,"fields":{"class":"YTWatchLayerViewController","count":0,"slot":1}}
+
+Storage failures: 0. Pending or abrupt-exit events may be missing.

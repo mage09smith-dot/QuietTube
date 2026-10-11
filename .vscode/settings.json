@@ -1,0 +1,12 @@
+{
+  "kilocode.diffEdits": true,
+  "kilocode.maxContextTokens": 40000,
+  "kilocode.apiProvider": "anthropic",
+  "kilocode.model": "claude-4.5-sonnet",
+  "kilocode.lowCostModel": "ollama/qwen2.5-coder:32b",
+  "kilocode.autoApprove": false,
+  "files.exclude": {
+    "artifacts": true,
+    "**/*.ipa": true
+  }
+}

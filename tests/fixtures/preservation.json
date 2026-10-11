@@ -1,0 +1,66 @@
+{
+  "runtime": {
+    "Sources/QTFeatures.m": "c9d2b69cd71bcb3227dc368083519bb8350e6f0c4d5499826ad36787810ed36a",
+    "Sources/QTLogo.m": "4e080868f7309b3983fd6ac2140f7d8276a295eb242c4f41ebc68c8e218b6807",
+    "Sources/QTAdProfile.m": "e439727462b3ccca1ab57c399c41d5ac4f260565362da5f8d6942eb10cbc50f1",
+    "Sources/QTFeedInsertion.m": "3ebff67ea5acf4137a164bdf0352beb8a0285e7d3127f32ea9dc280f95062ddf",
+    "Sources/QTMutationTrace.m": "f895093d3dbcd12a155c24b765dd81e36b026d4f13bd3912792efc94eea00e14",
+    "Sources/QTInsertionPolicy.h": "abf297c7aacb9113fff01239e20c5f657ea61c683a00fbe0e1ede7eef9caed6c",
+    "Sources/QTFeedRules.h": "152f5052c7649ebb01d3462454b88bf3fd7920ee05f55345283d570076273a6f",
+    "Sources/QTTemplateScan.h": "17f2e85a74b9d0dcef43a6d1005ed198ff82ff8d81e862bb34a7aedb7b880d4e",
+    "Sources/QTCore.m": "d56cb32ef02d2b259ec14eca1d2139f17bdfbac09c7074bea38852eadcb9ac6d",
+    "Sources/QTSettingsModel.m": "310c44450e4d93513d481a8af7b19fca4e91251576033b998c07cff3d5df9f93"
+  },
+  "cleanup": {
+    "files": {
+      "Sources/QTLogo.m": "4e080868f7309b3983fd6ac2140f7d8276a295eb242c4f41ebc68c8e218b6807",
+      "Sources/QTFeedRules.h": "152f5052c7649ebb01d3462454b88bf3fd7920ee05f55345283d570076273a6f",
+      "Sources/QTTemplateScan.h": "17f2e85a74b9d0dcef43a6d1005ed198ff82ff8d81e862bb34a7aedb7b880d4e"
+    },
+    "ranges": [
+      {
+        "file": "Sources/QTCore.m",
+        "start": "    NSMutableDictionary *active = [NSMutableDictionary dictionary];",
+        "end": "NSString *QTDiagnostics(void)",
+        "sha256": "6299ae176d1dab38559830f2949619542f7b72260a5ec68daa7a77eccc9c2c5c"
+      },
+      {
+        "file": "Sources/QTFeatures.m",
+        "start": "static _Thread_local NSUInteger QTNodeBudget",
+        "end": "void QTInstallFeatures(void)",
+        "sha256": "9596c88ce009168f9006f989760031de6a3eea49a948fd7dd0c2aa7ab7b8c96a"
+      },
+      {
+        "file": "Sources/QTFeatures.m",
+        "start": "    if (QTOn(@\"feedAds\") ||",
+        "end": "    if (QTOn(@\"background\")) {",
+        "sha256": "15aaa9930a59bc1193a44a44fb1afe9fb1637dbd98e9e1ec26ef55c889b4a533"
+      },
+      {
+        "file": "Sources/QTSettings.m",
+        "start": "static const void *QTRowMarker",
+        "end": null,
+        "sha256": "ceb11a5bd9d75553eb8601db3ff2690e7c6e82fe5a64fb2cd5331473568d7215"
+      },
+      {
+        "file": "scripts/package.py",
+        "start": "def commands(",
+        "end": "def inject(",
+        "sha256": "ad45d9c4c7489e04f0a650de64b63c8e55113e4304ab6a7d4397e87e229b8064"
+      },
+      {
+        "file": "scripts/package.py",
+        "start": "    encoded = name.encode()",
+        "end": "def package(",
+        "sha256": "615e7d99c1f7cbe39e7f0f808d24ce73c7c54b743ca3017a42722e6ac27b80d5"
+      }
+    ]
+  },
+  "player": {
+    "baseline": "0.13.1",
+    "start": "    if (!QTPlayerProfileInstalled) {",
+    "sha256": "0a422de785f8b41f28912f679f369e8cb946fec13e226bc0eda3d8d5f3f6c5df"
+  },
+  "intentional_1_0_1_changes": "Only preference initialization, removal of safety-latch preference writes, session-status reporting and settings descriptions changed. Player factory suffix, feed filters, all other runtime hashes and the raw launch snapshot/setter/hook helpers remain protected.",
+  "intentional_1_0_2_changes": "Packaging rejects malformed executable/encryption/dylib command inputs earlier. Parser and binary-write/extraction suffix retain old-byte protection; all runtime preservation hashes unchanged. Header-only Foundation test decoupling, explicit UI import and release labels do not change runtime function bodies."
+}

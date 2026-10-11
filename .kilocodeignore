@@ -1,0 +1,11 @@
+QuietTube-*.zip
+*.png
+*.ipa
+artifacts/
+docs/assets/
+appdiagonosticslog.txt
+uploads/
+*.log
+__pycache__/
+.venv/
+node_modules/

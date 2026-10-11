@@ -1,0 +1,15 @@
+#!/bin/bash
+set -euo pipefail
+cd "$(dirname "$0")/.."
+mkdir -p artifacts
+sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk" \
+  -miphoneos-version-min=17.0 -dynamiclib -fobjc-arc -fblocks \
+  -O2 -Wall -Wextra -Wno-unused-parameter \
+  -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types -Wno-error=return-type -Wno-implicit-function-declaration -Wno-incompatible-pointer-types -Wno-return-type -Wno-unguarded-availability-new \
+  -install_name '@rpath/QuietTube.dylib' \
+  -framework Foundation -framework UIKit -framework CoreGraphics -framework QuartzCore -framework AVFoundation -framework CoreMedia -framework Security \
+  Sources/QTCore.m Sources/QTDiagnosticLog.m Sources/QTDiagnosticsBridge.m Sources/QTPreferences.m Sources/QTSettings.m Sources/QTSettingsModel.m Sources/QTFeatures.m Sources/QTLogo.m Sources/QTAdProfile.m Sources/QTMutationTrace.m Sources/QTFeedInsertion.m Sources/QTSponsorSkip.m Sources/QTSideloadFix.m Sources/QTPlaybackFix.m Sources/QTIntegrity.m Sources/QTSponsorEngine.m Sources/QTStreamFallback.m \
+  -o artifacts/QuietTube.dylib
+codesign --force --sign - artifacts/QuietTube.dylib
+file artifacts/QuietTube.dylib

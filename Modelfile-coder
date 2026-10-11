@@ -1,0 +1,11 @@
+FROM qwen2.5-coder:32b
+
+PARAMETER num_ctx 8192
+PARAMETER num_gpu 999
+PARAMETER num_thread 6
+
+PARAMETER temperature 0.3
+PARAMETER top_p 0.9
+PARAMETER top_k 40
+PARAMETER repeat_penalty 1.1
+PARAMETER num_predict 6144
